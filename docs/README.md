@@ -96,13 +96,15 @@ Unlike traditional Git-based plugins, this tool interacts directly with the GitH
 
 ---
 
-## ☕ Support / 支持
+## 💖 Support / 支持
 
-If this plugin helps you, consider supporting the development:
+If this plugin has helped you with multi-device synchronization, please consider supporting the project. Your contribution keeps the development alive!
 
-如果这个插件对你有帮助，欢迎请我喝杯咖啡：
+如果这个插件解决了您的多端同步需求，请考虑支持我一下。您的支持是持续开发的最大动力！
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/thiter)
+| Ko-fi (International / 国际) | WeChat (China / 微信支付) |
+| :---: | :---: |
+| [<img src="https://storage.ko-fi.com/cdn/kofiv2.png" height="36" alt="Buy Me a Coffee at ko-fi.com" />](https://ko-fi.com/thiter) | <img src="qrcode.png" width="180" alt="WeChat Support" /> |
 
 ---
 
