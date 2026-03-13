@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-github-sync-multi-platform",
+  "name": "Obsidian Github Sync (Multi-Platform)",
+  "version": "1.0.1",
+  "minAppVersion": "1.6.5",
+  "description": "Smart real-time sync with GitHub API. Supports large assets (>1MB), private repos, and mobile display optimization.",
+  "author": "thiter",
+  "authorUrl": "https://github.com/thiter",
+  "isDesktopOnly": false
+}

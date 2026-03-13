@@ -1,0 +1,128 @@
+.obsidian-github-sync-multi-platform-ribbon-icon{
+    animation: rotate 2s linear infinite;
+    /* 旋转动画：2秒一圈，线性，无限循环 */
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(-360deg);
+    }
+}
+
+
+.obsidian-github-sync-multi-platform-settings-tag{
+    .setting-item-name {
+        color: var(--interactive-accent);
+    }
+}
+
+.obsidian-github-sync-multi-platform-settings-support {
+    .ko-fi-logo {
+        height: 36px !important;
+        border: 0px !important;
+    }
+}
+
+.obsidian-github-sync-multi-platform-settings-debug {
+    margin: var(--size-4-2);
+    text-align: center;
+    button {
+        margin: var(--size-4-2);
+    }
+}
+
+.obsidian-github-sync-multi-platform-settings {
+    padding: 0.75em 0;
+    border-top: 1px solid var(--background-modifier-border);
+
+    table {
+        width: 100%;
+        border: 1px solid var(--background-modifier-border);
+        margin-bottom: 20px;
+
+        a {
+            color: var(--color-blue);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        th, td {
+            border: 0 !important;
+        }
+
+        th {
+            text-align: center;
+            padding: 8px 10px;
+            font-size: var(--font-ui-smaller);
+            background-color: var(--background-secondary);
+        }
+
+        .no-columns-added {
+            padding: 15px;
+            text-align: center;
+            background-color: var(--background-secondary);
+
+            p {
+                margin: 4px;
+                font-size: 10px;
+            }
+        }
+
+        thead  {
+            border-bottom: 1px solid var(--color-base-40) !important;
+        }
+
+        tbody  {
+            tr {
+                background-color: var(--background-secondary);
+
+                &:nth-child(odd) {
+                    background-color: var(--background-secondary-alt);
+                }
+            }
+
+            td {
+                padding: 4px 8px;
+                font-size: var(--font-ui-small);
+            }
+        }
+
+
+        tfoot td {
+            padding: 8px 10px;
+        }
+    }
+}
+
+/* 移动端图片展示优化 */
+.markdown-rendered img, 
+.markdown-source-view.mod-cm6 .cm-content img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 10px auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* 如果图片被显式设置了宽度（如 ![|100]），保持原样，否则默认更宽一点 */
+.markdown-rendered img:not([width]),
+.markdown-source-view.mod-cm6 .cm-content img:not([width]) {
+    min-width: 200px; /* 设置一个合理的最小宽度 */
+}
+
+@media (max-width: 480px) {
+    .markdown-rendered img:not([width]),
+    .markdown-source-view.mod-cm6 .cm-content img:not([width]) {
+        width: 100%; /* 移动端默认撑满宽度 */
+    }
+}
+
+

@@ -1,0 +1,83 @@
+@charset "UTF-8";
+.obsidian-github-sync-multi-platform-ribbon-icon {
+  animation: rotate 2s linear infinite;
+  /* 旋转动画：2秒一圈，线性，无限循环 */
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+.obsidian-github-sync-multi-platform-settings-tag .setting-item-name {
+  color: var(--interactive-accent);
+}
+
+.obsidian-github-sync-multi-platform-settings-support .ko-fi-logo {
+  height: 36px !important;
+  border: 0px !important;
+}
+
+.obsidian-github-sync-multi-platform-settings-debug {
+  margin: var(--size-4-2);
+  text-align: center;
+}
+.obsidian-github-sync-multi-platform-settings-debug button {
+  margin: var(--size-4-2);
+}
+
+.obsidian-github-sync-multi-platform-settings {
+  padding: 0.75em 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.obsidian-github-sync-multi-platform-settings table {
+  width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  margin-bottom: 20px;
+}
+.obsidian-github-sync-multi-platform-settings table a {
+  color: var(--color-blue);
+  text-decoration: none;
+}
+.obsidian-github-sync-multi-platform-settings table a:hover {
+  text-decoration: underline;
+}
+.obsidian-github-sync-multi-platform-settings table th, .obsidian-github-sync-multi-platform-settings table td {
+  border: 0 !important;
+}
+.obsidian-github-sync-multi-platform-settings table th {
+  text-align: center;
+  padding: 8px 10px;
+  font-size: var(--font-ui-smaller);
+  background-color: var(--background-secondary);
+}
+.obsidian-github-sync-multi-platform-settings table .no-columns-added {
+  padding: 15px;
+  text-align: center;
+  background-color: var(--background-secondary);
+}
+.obsidian-github-sync-multi-platform-settings table .no-columns-added p {
+  margin: 4px;
+  font-size: 10px;
+}
+.obsidian-github-sync-multi-platform-settings table thead {
+  border-bottom: 1px solid var(--color-base-40) !important;
+}
+.obsidian-github-sync-multi-platform-settings table tbody tr {
+  background-color: var(--background-secondary);
+}
+.obsidian-github-sync-multi-platform-settings table tbody tr:nth-child(odd) {
+  background-color: var(--background-secondary-alt);
+}
+.obsidian-github-sync-multi-platform-settings table tbody td {
+  padding: 4px 8px;
+  font-size: var(--font-ui-small);
+}
+.obsidian-github-sync-multi-platform-settings table tfoot td {
+  padding: 8px 10px;
+}
+
+/*# sourceMappingURL=styles.css.map */
