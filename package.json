@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-github-sync-multi-platform",
-  "version": "1.0.1",
+  "name": "github-sync-multi-platform",
+  "version": "1.0.2",
   "description": "Real-time note synchronization with GitHub API, supporting desktop and mobile devices.",
   "main": "main.js",
   "author": "thiter",
