@@ -104,7 +104,7 @@ If this plugin has helped you with multi-device synchronization, please consider
 
 | Ko-fi (International / 国际) | WeChat (China / 微信支付) |
 | :---: | :---: |
-| [<img src="https://storage.ko-fi.com/cdn/kofiv2.png" height="36" alt="Buy Me a Coffee at ko-fi.com" />](https://ko-fi.com/thiter) | <img src="qrcode.png" width="180" alt="WeChat Support" /> |
+| [<img src="https://storage.ko-fi.com/cdn/kofiv2.png" height="36" alt="Buy Me a Coffee at ko-fi.com" />](https://ko-fi.com/thiter) | <img src="../qrcode.png" width="180" alt="WeChat Support" /> |
 
 ---
 
