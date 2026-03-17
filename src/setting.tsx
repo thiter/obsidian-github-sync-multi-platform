@@ -194,33 +194,20 @@ export class SettingTab extends PluginSettingTab {
 
     // Support section
     new Setting(set).setName($("支持")).setHeading()
-    const supportDiv = set.createDiv("support-section")
-    supportDiv.style.textAlign = "left"
-    supportDiv.style.padding = "20px"
-    supportDiv.style.backgroundColor = "var(--background-secondary)"
-    supportDiv.style.borderRadius = "12px"
-    supportDiv.style.margin = "20px 0"
+    const supportDiv = set.createDiv("github-sync-support-section")
 
     // Add donation title
-    const donateTitle = supportDiv.createEl("h3", { text: $("捐赠") })
-    donateTitle.style.marginTop = "0"
-    donateTitle.style.marginBottom = "10px"
+    new Setting(supportDiv).setName($("捐赠")).setHeading()
 
     // Add donation text
-    const donateText = supportDiv.createEl("p", { 
+    supportDiv.createEl("p", { 
       text: $("如果您喜欢这个插件，请考虑捐赠以支持继续开发。") 
     })
-    donateText.style.marginBottom = "20px"
-    donateText.style.fontSize = "var(--font-ui-small)"
-    donateText.style.opacity = "0.8"
 
     const kofiLink = supportDiv.createEl("a", {
       href: "https://ko-fi.com/thiter",
     })
-    const kofiImg = kofiLink.createEl("img")
+    const kofiImg = kofiLink.createEl("img", { cls: "kofi-img" })
     kofiImg.src = KofiImage
-    kofiImg.style.height = "36px"
-    kofiImg.style.display = "block"
-    kofiImg.style.marginTop = "10px"
   }
 }

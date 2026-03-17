@@ -31,7 +31,7 @@ export default class FastSync extends Plugin {
   syncData: SyncData = { files: {} }
   
   isSyncInProgress: boolean = false
-  debounceTimers: Map<string, NodeJS.Timeout> = new Map()
+  debounceTimers: Map<string, number> = new Map()
   
   syncSkipFiles: SyncSkipFiles = {}
   syncSkipDelFiles: SyncSkipFiles = {}
@@ -182,7 +182,7 @@ export default class FastSync extends Plugin {
       monthlyStats: stats
     }, null, 2);
 
-    const path = ".obsidian/sync-stats.json";
+    const path = `${this.app.vault.configDir}/sync-stats.json`;
     try {
       const existingSha = this.syncData.files[path]?.sha;
       const newSha = await this.githubClient.putFile(path, statsJson, existingSha);

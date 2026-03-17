@@ -2,7 +2,7 @@ import { TFile, TAbstractFile, Notice, requestUrl } from "obsidian";
 
 import { hashContent, dump } from "./helps";
 import FastSync from "../main";
-import { GitHubClient, GitHubFileResponse } from "./github-api";
+import { GitHubClient, GitHubTreeNode } from "./github-api";
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tiff"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -10,7 +10,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 /**
  * 核心修改逻辑，包含防抖和哈希校验
  */
-export const NoteModify = async function (file: TAbstractFile, plugin: FastSync, eventEnter: boolean = false) {
+export const NoteModify = function (file: TAbstractFile, plugin: FastSync, eventEnter: boolean = false) {
   if (!(file instanceof TFile)) return;
   if (!plugin.isWatchEnabled && eventEnter) return;
   if (plugin.ignoredFiles.has(file.path) && eventEnter) return;
@@ -27,9 +27,11 @@ export const NoteModify = async function (file: TAbstractFile, plugin: FastSync,
     clearTimeout(plugin.debounceTimers.get(file.path));
   }
 
-  const timer = setTimeout(async () => {
-    plugin.debounceTimers.delete(file.path);
-    await performSync(file, plugin);
+  const timer = window.setTimeout(() => {
+    (async () => {
+      plugin.debounceTimers.delete(file.path);
+      await performSync(file, plugin);
+    })();
   }, 5000); // 5秒防抖
 
   plugin.debounceTimers.set(file.path, timer);
@@ -53,7 +55,7 @@ const performSync = async (file: TFile, plugin: FastSync) => {
 
     if (isMarkdown) {
       content = await plugin.app.vault.read(file);
-      currentHash = hashContent(content as string);
+      currentHash = hashContent(content);
     } else {
       content = await plugin.app.vault.readBinary(file);
       // 对二进制文件使用简单的摘要校验
@@ -133,7 +135,7 @@ export const NoteRename = async function (file: TAbstractFile, oldfile: string, 
 
     if (isMarkdown) {
       content = await plugin.app.vault.read(file);
-      currentHash = hashContent(content as string);
+      currentHash = hashContent(content);
     } else {
       content = await plugin.app.vault.readBinary(file);
       currentHash = file.stat.size + "_" + file.stat.mtime;
@@ -183,7 +185,7 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
 
        if (isMarkdown) {
          content = await plugin.app.vault.read(file);
-         currentHash = hashContent(content as string);
+         currentHash = hashContent(content);
        } else {
          content = await plugin.app.vault.readBinary(file);
          currentHash = file.stat.size + "_" + file.stat.mtime;
@@ -223,11 +225,11 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
   try {
     const remoteTree = await plugin.githubClient.getTree();
     // 过滤 Markdown 和 图片
-    const remoteFiles = remoteTree.tree.filter((node: any) => {
+    const remoteFiles = remoteTree.tree.filter((node: GitHubTreeNode) => {
       const ext = node.path.split(".").pop()?.toLowerCase();
       return node.type === "blob" && (ext === "md" || IMAGE_EXTENSIONS.includes(ext || ""));
     });
-    const remoteFilesMap = new Map<string, string>(remoteFiles.map((f: any) => [f.path, f.sha] as [string, string]));
+    const remoteFilesMap = new Map<string, string>(remoteFiles.map((f: GitHubTreeNode) => [f.path, f.sha] as [string, string]));
 
     const allLocalFiles = plugin.app.vault.getFiles();
     const localFilesMap = new Map<string, TFile>(allLocalFiles.map(f => [f.path, f]));
@@ -322,7 +324,7 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
         let currentHash: string;
         if (isMarkdown) {
           content = await plugin.app.vault.read(file);
-          currentHash = hashContent(content as string);
+          currentHash = hashContent(content);
         } else {
           content = await plugin.app.vault.readBinary(file);
           currentHash = file.stat.size + "_" + file.stat.mtime;

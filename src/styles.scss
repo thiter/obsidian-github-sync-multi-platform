@@ -35,6 +35,31 @@
     }
 }
 
+.github-sync-support-section {
+    text-align: left;
+    padding: 20px;
+    background-color: var(--background-secondary);
+    border-radius: 12px;
+    margin: 20px 0;
+
+    h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+
+    p {
+        margin-bottom: 20px;
+        font-size: var(--font-ui-small);
+        opacity: 0.8;
+    }
+
+    .kofi-img {
+        height: 36px;
+        display: block;
+        margin-top: 10px;
+    }
+}
+
 .obsidian-github-sync-multi-platform-settings {
     padding: 0.75em 0;
     border-top: 1px solid var(--background-modifier-border);
@@ -124,5 +149,3 @@
         width: 100%; /* 移动端默认撑满宽度 */
     }
 }
-
-

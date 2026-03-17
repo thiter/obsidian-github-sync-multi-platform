@@ -48,7 +48,6 @@ async function getClipboardContent(plugin: FastSync): Promise<void> {
     if (typeof parsedData === "object" && parsedData !== null) {
       const hasOwner = "githubOwner" in parsedData || "owner" in parsedData
       const hasRepo = "githubRepo" in parsedData || "repo" in parsedData
-      const hasBranch = "githubBranch" in parsedData || "branch" in parsedData
       const hasToken = "githubToken" in parsedData || "token" in parsedData
 
       if (hasOwner && hasRepo && hasToken) {

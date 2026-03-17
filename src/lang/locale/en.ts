@@ -3,7 +3,7 @@ import type { LangMap } from "../lang";
 
 
 const en: Partial<LangMap> = {
-  "Fast sync": "Obsidian-Github-Sync-Multi-Platform",
+  "Fast sync": "Obsidian GitHub sync multi platform",
   "同步全部笔记(覆盖远端)": "Sync all notes (overwrite remote)",
   "同步全部笔记": "Sync all notes",
   "远端": "Remote",
@@ -35,14 +35,14 @@ const en: Partial<LangMap> = {
   "通过快捷键打开控制台，你可以看到这个插件和其他插件的日志": "By using the shortcut key to open the console, you can see the logs of this plugin and other plugins.",
   "console_mac": "Cmd (⌘) + option (⌥) + i",
   "console_windows": "Ctrl (⌃) + shift (⇧) + i",
-  "GitHub 用户名": "GitHub Owner",
-  "GitHub 仓库名": "GitHub Repo",
-  "GitHub 分支名": "GitHub Branch",
-  "GitHub 访问令牌": "GitHub Token (PAT)",
+  "GitHub 用户名": "GitHub owner",
+  "GitHub 仓库名": "GitHub repo",
+  "GitHub 分支名": "GitHub branch",
+  "GitHub 访问令牌": "GitHub token (PAT)",
   "输入您的 GitHub 用户名": "Enter your GitHub username or organization name",
   "输入您的 GitHub 仓库名": "Enter your GitHub repository name",
   "输入您的 GitHub 分支名": "Enter your GitHub branch name (e.g., main)",
-  "输入您的 GitHub 访问令牌": "Enter your GitHub Personal Access Token",
+  "输入您的 GitHub 访问令牌": "Enter your GitHub personal access token",
 }
 
 export default en;

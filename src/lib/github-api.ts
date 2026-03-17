@@ -1,4 +1,4 @@
-import { requestUrl, RequestUrlParam } from "obsidian";
+import { requestUrl } from "obsidian";
 
 export interface GitHubConfig {
   owner: string;
@@ -13,6 +13,22 @@ export interface GitHubFileResponse {
   path: string;
   size: number;
   download_url?: string;
+}
+
+export interface GitHubTreeNode {
+  path: string;
+  mode: string;
+  type: "blob" | "tree";
+  sha: string;
+  size?: number;
+  url: string;
+}
+
+export interface GitHubTree {
+  sha: string;
+  url: string;
+  tree: GitHubTreeNode[];
+  truncated: boolean;
 }
 
 export class GitHubClient {
@@ -58,7 +74,12 @@ export class GitHubClient {
     
     let base64Content: string;
     if (typeof content === "string") {
-      base64Content = btoa(unescape(encodeURIComponent(content)));
+      const uint8 = new TextEncoder().encode(content);
+      let binary = "";
+      for (let i = 0; i < uint8.byteLength; i++) {
+        binary += String.fromCharCode(uint8[i]);
+      }
+      base64Content = btoa(binary);
     } else {
       // Handle binary content (ArrayBuffer)
       const bytes = new Uint8Array(content);
@@ -115,23 +136,19 @@ export class GitHubClient {
       url += `&path=${encodeURIComponent(path)}`;
     }
 
-    try {
-      const response = await requestUrl({
-        url,
-        method: "GET",
-        headers: this.headers,
-      });
+    const response = await requestUrl({
+      url,
+      method: "GET",
+      headers: this.headers,
+    });
 
-      if (response.status === 200 && response.json.length > 0) {
-        return response.json[0].sha;
-      }
-      return null;
-    } catch (error) {
-      throw error;
+    if (response.status === 200 && response.json.length > 0) {
+      return response.json[0].sha;
     }
+    return null;
   }
 
-  async getTree(): Promise<any> {
+  async getTree(): Promise<GitHubTree> {
     const url = `${this.baseUrl}/git/trees/${this.config.branch}?recursive=1`;
     const response = await requestUrl({
       url,
@@ -139,13 +156,18 @@ export class GitHubClient {
       headers: this.headers,
     });
     if (response.status === 200) {
-      return response.json;
+      return response.json as GitHubTree;
     }
     throw new Error(`Failed to get tree: ${response.status}`);
   }
 
   // Helper to decode base64 content from GitHub
   static decodeContent(base64Content: string): string {
-    return decodeURIComponent(escape(atob(base64Content.replace(/\n/g, ""))));
+    const binary = atob(base64Content.replace(/\n/g, ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
   }
 }
