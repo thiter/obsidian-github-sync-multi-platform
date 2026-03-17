@@ -28,7 +28,7 @@ export const NoteModify = function (file: TAbstractFile, plugin: FastSync, event
   }
 
   const timer = window.setTimeout(() => {
-    (async () => {
+    void (async () => {
       plugin.debounceTimers.delete(file.path);
       await performSync(file, plugin);
     })();
