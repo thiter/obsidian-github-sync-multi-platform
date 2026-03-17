@@ -38,7 +38,7 @@ const en: Partial<LangMap> = {
   "GitHub 用户名": "GitHub owner",
   "GitHub 仓库名": "GitHub repo",
   "GitHub 分支名": "GitHub branch",
-  "GitHub 访问令牌": "GitHub token (PAT)",
+  "GitHub 访问令牌": "GitHub token",
   "输入您的 GitHub 用户名": "Enter your GitHub username or organization name",
   "输入您的 GitHub 仓库名": "Enter your GitHub repository name",
   "输入您的 GitHub 分支名": "Enter your GitHub branch name (e.g., main)",

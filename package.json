@@ -1,6 +1,6 @@
 {
   "name": "github-sync-multi-platform",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Real-time note synchronization with GitHub API, supporting desktop and mobile devices.",
   "main": "main.js",
   "author": "thiter",
@@ -20,8 +20,8 @@
     "@types/node": "^22.19.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
     "builtin-modules": "^4.0.0",
     "esbuild": "^0.24.2",
     "eslint": "^9.39.3",
