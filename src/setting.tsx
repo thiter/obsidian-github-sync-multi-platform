@@ -1,11 +1,8 @@
 import { App, PluginSettingTab, Notice, Setting, Platform } from "obsidian";
-import { createRoot, Root } from "react-dom/client";
-
-import { SettingsView } from "./views/settings-view";
 import { KofiImage } from "./lib/icons";
 import { $ } from "./lang/lang";
 import FastSync from "./main";
-
+import { dump } from "./lib/helps";
 
 export interface PluginSettings {
   //是否自动上传
@@ -46,7 +43,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 
 export class SettingTab extends PluginSettingTab {
   plugin: FastSync
-  root: Root | null = null
 
   constructor(app: App, plugin: FastSync) {
     super(app, plugin)
@@ -55,9 +51,44 @@ export class SettingTab extends PluginSettingTab {
   }
 
   hide(): void {
-    if (this.root) {
-      this.root.unmount()
-      this.root = null
+    // 不再需要 React root.unmount()
+  }
+
+  /**
+   * 从剪贴板读取 GitHub 配置 JSON 并自动填入设置
+   */
+  async handleClipboardPaste(tipEl: HTMLElement): Promise<void> {
+    const showTip = (msg: string) => {
+      tipEl.setText(msg)
+      setTimeout(() => tipEl.setText(""), 2000)
+    }
+
+    try {
+      if (!navigator.clipboard) {
+        showTip($("未检测到配置信息!"))
+        return
+      }
+      const text = await navigator.clipboard.readText()
+      const parsed = JSON.parse(text)
+      if (typeof parsed === "object" && parsed !== null) {
+        const hasOwner = "githubOwner" in parsed || "owner" in parsed
+        const hasRepo = "githubRepo" in parsed || "repo" in parsed
+        const hasToken = "githubToken" in parsed || "token" in parsed
+        if (hasOwner && hasRepo && hasToken) {
+          this.plugin.settings.githubOwner = parsed.githubOwner || parsed.owner
+          this.plugin.settings.githubRepo = parsed.githubRepo || parsed.repo
+          this.plugin.settings.githubBranch = parsed.githubBranch || parsed.branch || "main"
+          this.plugin.settings.githubToken = parsed.githubToken || parsed.token
+          await this.plugin.saveSettings()
+          this.display()
+          showTip($("接口配置信息已经粘贴到设置中!"))
+          return
+        }
+      }
+      showTip($("未检测到配置信息!"))
+    } catch (err) {
+      dump(err)
+      showTip($("未检测到配置信息!"))
     }
   }
 
@@ -86,11 +117,36 @@ export class SettingTab extends PluginSettingTab {
       .setHeading()
       .setClass("obsidian-github-sync-multi-platform-settings-tag")
 
-    const apiSet = set.createDiv()
-    apiSet.addClass("obsidian-github-sync-multi-platform-settings")
+    // 用 Obsidian 原生 API 替换 React 组件（移除 react-dom 依赖）
+    new Setting(set)
+      .setName($("GitHub 同步配置"))
+      .setDesc($("使用 GitHub API 进行同步"))
 
-    this.root = createRoot(apiSet)
-    this.root.render(<SettingsView plugin={this.plugin} />)
+    const apiInfoDiv = set.createDiv("obsidian-github-sync-multi-platform-settings")
+    const table = apiInfoDiv.createEl("table", { cls: "obsidian-github-sync-multi-platform-settings-openapi" })
+    const thead = table.createEl("thead")
+    const headerRow = thead.createEl("tr")
+    headerRow.createEl("th", { text: $("方式") })
+    headerRow.createEl("th", { text: $("说明") })
+    headerRow.createEl("th", { text: $("详情参考") })
+    const tbody = table.createEl("tbody")
+    const row = tbody.createEl("tr")
+    row.createEl("td", { text: "GitHub" })
+    row.createEl("td", { text: $("使用 GitHub 仓库存储和同步笔记") })
+    const linkTd = row.createEl("td")
+    linkTd.createEl("a", { text: "GitHub PAT Settings", href: "https://github.com/settings/tokens" })
+
+    // 粘贴配置按鈕
+    const clipboardDiv = set.createDiv("clipboard-read")
+    const clipboardBtn = clipboardDiv.createEl("button", {
+      text: $("粘贴的远端配置"),
+      cls: "clipboard-read-button"
+    })
+    const clipboardTip = clipboardDiv.createEl("div", { cls: "clipboard-read-description" })
+    clipboardTip.setText(this.plugin.clipboardReadTip)
+    clipboardBtn.addEventListener("click", () => {
+      void this.handleClipboardPaste(clipboardTip)
+    })
 
     new Setting(set)
       .setName($("GitHub 用户名"))
@@ -134,7 +190,8 @@ export class SettingTab extends PluginSettingTab {
     new Setting(set)
       .setName($("GitHub 访问令牌"))
       .setDesc($("用于访问 GitHub API 的 Personal Access Token"))
-      .addText((text) =>
+      .addText((text) => {
+        text.inputEl.type = "password"  // C4: mask 显示，防止 Token 明文泄露
         text
           .setPlaceholder($("输入您的 GitHub 访问令牌"))
           .setValue(this.plugin.settings.githubToken)
@@ -142,7 +199,7 @@ export class SettingTab extends PluginSettingTab {
             this.plugin.settings.githubToken = value
             await this.plugin.saveSettings()
           })
-      )
+      })
 
     new Setting(set)
       .setName($("远端仓库名"))

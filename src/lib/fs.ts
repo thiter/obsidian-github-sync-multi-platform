@@ -43,11 +43,10 @@ const performSync = async (file: TFile, plugin: FastSync) => {
     const isMarkdown = file.extension === "md";
     const isImage = IMAGE_EXTENSIONS.includes(file.extension.toLowerCase());
     
-    // 如果不是笔记也不是图片，且非必要，可以跳过或支持所有附件
-    // 目前优先处理笔记和图片
+    // 只同步 Markdown 笔记和图片，其余类型（.zip .canvas .base 等）跳过
+    // 避免向 GitHub API 发送无法处理的文件类型导致 422
     if (!isMarkdown && !isImage) {
-      // 如果您希望支持所有类型，可以注释掉下面这行
-      // return; 
+      return;
     }
 
     let content: string | ArrayBuffer;
@@ -171,7 +170,6 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
   plugin.disableWatch();
   
   try {
-    // 获取所有文件 (不仅是 Markdown)
     const files = plugin.app.vault.getFiles();
     for (const file of files) {
        if (file.stat.size > MAX_FILE_SIZE) continue;
@@ -200,10 +198,13 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
        };
     }
     await plugin.saveSyncData();
-    await plugin.updateStats();
+    // B6: updateStats 异步执行，不阻塞主流程
+    plugin.updateStats().catch(e => console.error("Stats update failed:", e));
     new Notice("All assets synced to GitHub");
   } catch (error) {
     console.error("Force sync failed:", error);
+    // B3: 失败时弹出通知，用户可感知
+    new Notice(`Sync failed: ${(error as Error).message}`);
   } finally {
     plugin.isSyncInProgress = false;
     plugin.enableWatch();
@@ -220,7 +221,6 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
 
   plugin.isSyncInProgress = true;
   plugin.disableWatch();
-  new Notice("Starting full sync...");
 
   try {
     const remoteTree = await plugin.githubClient.getTree();
@@ -235,91 +235,99 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
     const localFilesMap = new Map<string, TFile>(allLocalFiles.map(f => [f.path, f]));
 
     // 1. 下拉远端变更
+    let step1Count = 0;
     for (const [path, remoteSha] of Array.from(remoteFilesMap.entries())) {
-      const localFile = localFilesMap.get(path);
-      const localState = plugin.syncData.files[path];
+      try {
+        const localFile = localFilesMap.get(path);
+        const localState = plugin.syncData.files[path];
 
-      // 强制修复逻辑：如果文件不存在，或者 SHA 不一致，或者本地文件大小为 0（说明之前同步出错了）
-      const isLocalFileEmpty = localFile && localFile.stat.size === 0;
-      
-      if (!localFile || (localState && localState.sha !== remoteSha) || isLocalFileEmpty) {
-        const remoteData = await plugin.githubClient.getFile(path);
-        if (remoteData) {
-          const ext = path.split(".").pop()?.toLowerCase();
-          const isMarkdown = ext === "md";
-          
-          plugin.addIgnoredFile(path);
-          
-          // 确保文件夹存在
-          const folderPath = path.split("/").slice(0, -1).join("/");
-          if (folderPath && !plugin.app.vault.getAbstractFileByPath(folderPath)) {
-            await plugin.app.vault.createFolder(folderPath);
-          }
-
-          // 处理 GitHub API 限制（大于 1MB 文件 content 为空）
-          let finalContent: string | ArrayBuffer;
-          if (!remoteData.content && remoteData.download_url) {
-            const downloadRes = await requestUrl({ 
-              url: remoteData.download_url,
-              headers: plugin.githubClient.headers
-            });
-            finalContent = downloadRes.arrayBuffer;
-          } else {
-            finalContent = remoteData.content;
-          }
-
-          if (isMarkdown) {
-            const content = typeof finalContent === "string" 
-              ? GitHubClient.decodeContent(finalContent)
-              : new TextDecoder().decode(finalContent);
-              
-            if (localFile) await plugin.app.vault.modify(localFile, content);
-            else await plugin.app.vault.create(path, content);
+        const isLocalFileEmpty = localFile && localFile.stat.size === 0;
+        
+        if (!localFile || (localState && localState.sha !== remoteSha) || isLocalFileEmpty) {
+          const remoteData = await plugin.githubClient.getFile(path);
+          if (remoteData) {
+            const ext = path.split(".").pop()?.toLowerCase();
+            const isMarkdown = ext === "md";
             
-            plugin.syncData.files[path] = {
-              sha: remoteSha,
-              lastSync: Date.now(),
-              hash: hashContent(content)
-            };
-          } else {
-            // 二进制处理
-            let buffer: ArrayBuffer;
-            if (typeof finalContent === "string") {
-              const binaryString = atob(finalContent.replace(/\n/g, ""));
-              const len = binaryString.length;
-              const bytes = new Uint8Array(len);
-              for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-              buffer = bytes.buffer;
+            plugin.addIgnoredFile(path);
+            
+            const folderPath = path.split("/").slice(0, -1).join("/");
+            if (folderPath && !plugin.app.vault.getAbstractFileByPath(folderPath)) {
+              await plugin.app.vault.createFolder(folderPath);
+            }
+
+            let finalContent: string | ArrayBuffer;
+            if (!remoteData.content && remoteData.download_url) {
+              const downloadRes = await requestUrl({ 
+                url: remoteData.download_url,
+                headers: plugin.githubClient.headers
+              });
+              finalContent = downloadRes.arrayBuffer;
             } else {
-              buffer = finalContent;
+              finalContent = remoteData.content;
             }
-            
-            if (localFile) await plugin.app.vault.modifyBinary(localFile, buffer);
-            else await plugin.app.vault.createBinary(path, buffer);
-            
-            const newlyCreatedFile = plugin.app.vault.getAbstractFileByPath(path);
-            if (newlyCreatedFile instanceof TFile) {
-               plugin.syncData.files[path] = {
-                 sha: remoteSha,
-                 lastSync: Date.now(),
-                 hash: newlyCreatedFile.stat.size + "_" + newlyCreatedFile.stat.mtime
-               };
+
+            if (isMarkdown) {
+              const content = typeof finalContent === "string" 
+                ? GitHubClient.decodeContent(finalContent)
+                : new TextDecoder().decode(finalContent);
+                
+              if (localFile) await plugin.app.vault.modify(localFile, content);
+              else await plugin.app.vault.create(path, content);
+              
+              plugin.syncData.files[path] = {
+                sha: remoteSha,
+                lastSync: Date.now(),
+                hash: hashContent(content)
+              };
+            } else {
+              let buffer: ArrayBuffer;
+              if (typeof finalContent === "string") {
+                const binaryString = atob(finalContent.replace(/\n/g, ""));
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+                buffer = bytes.buffer;
+              } else {
+                buffer = finalContent;
+              }
+              
+              if (localFile) await plugin.app.vault.modifyBinary(localFile, buffer);
+              else await plugin.app.vault.createBinary(path, buffer);
+              
+              const newlyCreatedFile = plugin.app.vault.getAbstractFileByPath(path);
+              if (newlyCreatedFile instanceof TFile) {
+                 plugin.syncData.files[path] = {
+                   sha: remoteSha,
+                   lastSync: Date.now(),
+                   hash: newlyCreatedFile.stat.size + "_" + newlyCreatedFile.stat.mtime
+                 };
+              }
             }
+            plugin.removeIgnoredFile(path);
+            step1Count++;
           }
-          plugin.removeIgnoredFile(path);
         }
+      } catch (fileError) {
+        // 单个文件失败不中断整个同步
+        console.error(`Step1 failed for ${path}:`, fileError);
       }
     }
 
-    // 2. 推送本地新文件
+
+    // 2. 推送本地文件：新增文件 + 本地内容有变化的已有文件
+    let step2Push = 0, step2Skip = 0, step2Fail = 0;
     for (const file of allLocalFiles) {
       const isMarkdown = file.extension === "md";
       const isImage = IMAGE_EXTENSIONS.includes(file.extension.toLowerCase());
       if (!isMarkdown && !isImage) continue;
       if (file.stat.size > MAX_FILE_SIZE) continue;
 
-      const remoteSha = remoteFilesMap.get(file.path);
-      if (!remoteSha) {
+      try {
+        const remoteSha = remoteFilesMap.get(file.path);
+        const localState = plugin.syncData.files[file.path];
+
+        // 计算当前内容 hash
         let content: string | ArrayBuffer;
         let currentHash: string;
         if (isMarkdown) {
@@ -330,20 +338,48 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
           currentHash = file.stat.size + "_" + file.stat.mtime;
         }
 
-        const newSha = await plugin.githubClient.putFile(file.path, content);
-        plugin.syncData.files[file.path] = {
-          sha: newSha,
-          lastSync: Date.now(),
-          hash: currentHash
-        };
+        if (!remoteSha) {
+          // 远端没有 → 新增文件，直接上传
+          const newSha = await plugin.githubClient.putFile(file.path, content);
+          plugin.syncData.files[file.path] = {
+            sha: newSha,
+            lastSync: Date.now(),
+            hash: currentHash
+          };
+          step2Push++;
+        } else if (!localState || localState.hash !== currentHash) {
+          // B2: 远端有、但本地内容发生了变化 → 推送本地改动
+          const newSha = await plugin.githubClient.putFile(file.path, content, remoteSha);
+          plugin.syncData.files[file.path] = {
+            sha: newSha,
+            lastSync: Date.now(),
+            hash: currentHash
+          };
+          step2Push++;
+        } else {
+          // 两端内容一致，只更新本地 sha 缓存（防止 performSync 重复触发）
+          plugin.syncData.files[file.path] = {
+            sha: remoteSha,
+            lastSync: plugin.syncData.files[file.path]?.lastSync ?? Date.now(),
+            hash: currentHash  // 更新为当前真实 hash
+          };
+          step2Skip++;
+        }
+      } catch (fileError) {
+        // 单个文件失败不中断整个同步
+        console.error(`Step2 failed for ${file.path}:`, fileError);
+        step2Fail++;
       }
     }
     
     await plugin.saveSyncData();
-    await plugin.updateStats();
+    // B6: updateStats 异步执行，不阻塞主同步流程
+    plugin.updateStats().catch(e => console.error("Stats update failed:", e));
     new Notice("Sync completed");
   } catch (error) {
     console.error("Sync failed:", error);
+    // B3: 同步失败时弹出通知
+    new Notice(`❌ Sync failed: ${(error as Error).message}`);
   } finally {
     plugin.isSyncInProgress = false;
     plugin.enableWatch();

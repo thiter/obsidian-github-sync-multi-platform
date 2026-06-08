@@ -51,12 +51,14 @@ export class GitHubClient {
   }
 
   async getFile(path: string): Promise<GitHubFileResponse | null> {
-    const url = `${this.baseUrl}/contents/${encodeURIComponent(path)}?ref=${this.config.branch}`;
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const url = `${this.baseUrl}/contents/${encodedPath}?ref=${this.config.branch}`;
     try {
       const response = await requestUrl({
         url,
         method: "GET",
         headers: this.headers,
+        throw: false,
       });
 
       if (response.status === 200) {
@@ -70,8 +72,39 @@ export class GitHubClient {
   }
 
   async putFile(path: string, content: string | ArrayBuffer, sha?: string): Promise<string> {
-    const url = `${this.baseUrl}/contents/${encodeURIComponent(path)}`;
-    
+    const response = await this._doPutRequest(path, content, sha);
+
+    // 409 = 本地缓存 sha 已过期（SHA 冲突）
+    // 422 = 验证失败，常见原因：文件已存在但未传 sha（GitHub 不一致行为）
+    // 两种情况均用相同策略：重新 GET 最新 sha 后重试一次
+    if (response.status === 409 || response.status === 422) {
+      const remoteFile = await this.getFile(path);
+      const freshSha = remoteFile?.sha;
+      if (!freshSha && response.status === 422) {
+        // 422 且远端也没有这个文件 → 真正的验证失败，不重试
+        throw new Error(`Failed to put file (422 validation error): ${response.text}`);
+      }
+      const retry = await this._doPutRequest(path, content, freshSha);
+      if (retry.status === 200 || retry.status === 201) {
+        return (retry.json as { content: { sha: string } }).content.sha;
+      }
+      throw new Error(`Failed to put file after sha retry (${response.status}→${retry.status}): ${retry.text}`);
+    }
+
+    if (response.status === 200 || response.status === 201) {
+      return (response.json as { content: { sha: string } }).content.sha;
+    }
+    throw new Error(`Failed to put file: ${response.status} ${response.text}`);
+  }
+
+  private async _doPutRequest(
+    path: string,
+    content: string | ArrayBuffer,
+    sha?: string
+  ): Promise<{ status: number; json: Record<string, unknown>; text: string }> {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const url = `${this.baseUrl}/contents/${encodedPath}`;
+
     let base64Content: string;
     if (typeof content === "string") {
       const uint8 = new TextEncoder().encode(content);
@@ -81,7 +114,6 @@ export class GitHubClient {
       }
       base64Content = btoa(binary);
     } else {
-      // Handle binary content (ArrayBuffer)
       const bytes = new Uint8Array(content);
       let binary = "";
       for (let i = 0; i < bytes.byteLength; i++) {
@@ -90,28 +122,38 @@ export class GitHubClient {
       base64Content = btoa(binary);
     }
 
-    const body = {
+    const body: Record<string, unknown> = {
       message: `sync: ${sha ? "update" : "create"} ${path}`,
       content: base64Content,
-      sha,
       branch: this.config.branch,
     };
+    if (sha) body.sha = sha;
 
-    const response = await requestUrl({
-      url,
-      method: "PUT",
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
-
-    if (response.status === 200 || response.status === 201) {
-      return response.json.content.sha;
+    // requestUrl 在收到 4xx/5xx 时默认抛出异常而非返回
+    // 加 throw: false 确保始终返回响应对象，使 409/422 状态码判断 100% 生效
+    try {
+      const res = await requestUrl({
+        url,
+        method: "PUT",
+        headers: this.headers,
+        body: JSON.stringify(body),
+        throw: false,
+      });
+      return { status: res.status, json: res.json as Record<string, unknown>, text: res.text };
+    } catch (err: unknown) {
+      // 备用分支：如果 throw:false 不生效，捕获异常并返回
+      const e = err as { status?: number; message?: string };
+      return {
+        status: e.status ?? 0,
+        json: {} as Record<string, unknown>,
+        text: e.message ?? String(err),
+      };
     }
-    throw new Error(`Failed to put file: ${response.status} ${response.text}`);
   }
 
   async deleteFile(path: string, sha: string): Promise<void> {
-    const url = `${this.baseUrl}/contents/${encodeURIComponent(path)}`;
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const url = `${this.baseUrl}/contents/${encodedPath}`;
     const body = {
       message: `sync: delete ${path}`,
       sha,
@@ -125,7 +167,8 @@ export class GitHubClient {
       body: JSON.stringify(body),
     });
 
-    if (response.status !== 200) {
+    // B5: GitHub DELETE 成功返回 200（有响应体）或 204（无内容）
+    if (response.status !== 200 && response.status !== 204) {
       throw new Error(`Failed to delete file: ${response.status} ${response.text}`);
     }
   }
@@ -154,11 +197,12 @@ export class GitHubClient {
       url,
       method: "GET",
       headers: this.headers,
+      throw: false,
     });
     if (response.status === 200) {
       return response.json as GitHubTree;
     }
-    throw new Error(`Failed to get tree: ${response.status}`);
+    throw new Error(`Failed to get tree: HTTP ${response.status} - ${response.text}`);
   }
 
   // Helper to decode base64 content from GitHub

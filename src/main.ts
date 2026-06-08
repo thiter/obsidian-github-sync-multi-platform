@@ -81,7 +81,9 @@ export default class FastSync extends Plugin {
 
     this.updateRibbonIcon(!!(this.settings.githubToken && this.settings.githubOwner && this.settings.githubRepo))
 
-    // 注册文件事件 - 现在支持所有文件类型
+    // 注册文件事件（只监听 md 和图片，过滤其他类型在 performSync 内完成）
+    // 启动时先禁用 watch，防止 vault 索引触发大量文件事件并发打 API 被 GitHub 限速（422）
+    this.disableWatch()
     this.registerEvent(this.app.vault.on("create", (file) => NoteModify(file, this, true)))
     this.registerEvent(this.app.vault.on("modify", (file) => NoteModify(file, this, true)))
     this.registerEvent(this.app.vault.on("delete", (file) => NoteDelete(file, this, true)))
@@ -100,7 +102,7 @@ export default class FastSync extends Plugin {
       callback: () => StartupFullNotesSync(this),
     })
 
-    // 在布局加载完成后，自动触发同步以拉取云端新增或修改的文件
+    // 布局加载完成后统一执行启动同步，完成后再开启实时 watch
     this.app.workspace.onLayoutReady(() => {
       if (
         this.settings.syncEnabled &&
@@ -108,10 +110,14 @@ export default class FastSync extends Plugin {
         this.settings.githubOwner &&
         this.settings.githubRepo
       ) {
-        // 延迟 1 秒触发，避免阻塞 Obsidian 的界面加载和其他插件的初始化
+        // 延迟 1.5 秒，等待 Obsidian 初始化完成
         setTimeout(() => {
+          // syncAllFilesImpl 内部完成后会调用 enableWatch()
           StartupFullNotesSync(this);
-        }, 1000);
+        }, 1500);
+      } else {
+        // 未配置则直接开启 watch
+        this.enableWatch();
       }
     });
   }
@@ -128,6 +134,9 @@ export default class FastSync extends Plugin {
   }
 
   onunload() {
+    // 清理所有防抖计时器，防止插件卸载后仍有回调触发（内存泄漏）
+    this.debounceTimers.forEach(timer => clearTimeout(timer));
+    this.debounceTimers.clear();
   }
 
   updateRibbonIcon(status: boolean) {
@@ -140,28 +149,37 @@ export default class FastSync extends Plugin {
     }
   }
 
+  /**
+   * 统一持久化入口：settings 和 syncData 始终存储在同一个对象中，
+   * 避免 saveSettings / saveSyncData 互相覆盖对方的数据。
+   */
+  async persistData() {
+    await this.saveData({
+      settings: this.settings,
+      syncData: this.syncData,
+    });
+  }
+
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    const data = await this.loadData() ?? {};
+    // 兼容旧版本：旧版直接把 settings 字段铺在顶层
+    const savedSettings = data.settings ?? data;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
   }
 
   async saveSettings() {
-    await this.saveData(this.settings)
     this.initGitHubClient()
     this.updateRibbonIcon(!!(this.settings.githubToken && this.settings.githubOwner && this.settings.githubRepo))
+    await this.persistData()
   }
 
   async loadSyncData() {
-    const data = await this.loadData();
-    if (data && data.syncData) {
-      this.syncData = data.syncData;
-    } else {
-      this.syncData = { files: {} };
-    }
+    const data = await this.loadData() ?? {};
+    this.syncData = data.syncData ?? { files: {} };
   }
 
   async saveSyncData() {
-    const data = await this.loadData();
-    await this.saveData({ ...data, syncData: this.syncData });
+    await this.persistData();
   }
 
   async updateStats() {

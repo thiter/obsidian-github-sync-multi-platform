@@ -28,7 +28,7 @@ Unlike traditional Git-based plugins, this tool interacts directly with the GitH
 ## 🛠 Tech Stack
 
 -   **Core**: TypeScript, Plugin API.
--   **UI**: React, Tailwind-like modular CSS.
+-   **UI**: Vanilla CSS, native Obsidian setting controls.
 -   **Network**: GitHub REST API (v3).
 -   **Build**: esbuild for high-speed bundling.
 
@@ -72,7 +72,7 @@ Unlike traditional Git-based plugins, this tool interacts directly with the GitH
 ## 🛠 技术架构
 
 -   **核心**: TypeScript, Plugin API.
--   **UI 框架**: React, 模块化 CSS 设计.
+-   **UI 框架**: 原生 CSS, Obsidian 内置设置组件.
 -   **通信**: GitHub REST API (v3).
 -   **构建工具**: esbuild 极速打包.
 

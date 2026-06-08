@@ -1,9 +1,9 @@
 {
   "id": "github-sync-multi-platform",
-  "name": "Github Sync (Multi-Platform)",
+  "name": "GitHub Sync (Multi-Platform)",
   "version": "1.0.5",
   "minAppVersion": "1.6.5",
-  "description": "Smart real-time sync with GitHub API. Supports large assets (>1MB), private repos, and mobile display optimization.",
+  "description": "Sync your notes to GitHub with real-time file monitoring, supporting desktop and mobile.",
   "author": "thiter",
   "authorUrl": "https://github.com/thiter",
   "isDesktopOnly": false 

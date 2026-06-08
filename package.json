@@ -18,8 +18,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.19.12",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "builtin-modules": "^4.0.0",
@@ -30,11 +28,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@codemirror/state": "6.5.0",
-    "@codemirror/view": "6.38.6",
-    "file-type": "^19.6.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
   },
   "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee"
 }

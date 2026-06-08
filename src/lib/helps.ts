@@ -56,8 +56,8 @@ export const showErrorDialog = function (message: string): void {
  * 将传入的消息打印到控制台
  * @param message - 要打印的消息，可以是多个参数
  */
-export const dump = function (...message: unknown[]): void {
-  //console.log(...message)
+export const dump = function (..._message: unknown[]): void {
+  // intentionally empty in production
 }
 
 
