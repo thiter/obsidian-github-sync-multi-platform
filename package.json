@@ -1,6 +1,6 @@
 {
   "name": "github-sync-multi-platform",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Real-time note synchronization with GitHub API, supporting desktop and mobile devices.",
   "main": "main.js",
   "author": "thiter",
@@ -27,7 +27,6 @@
     "tslib": "^2.8.1",
     "typescript": "^5.9.3"
   },
-  "dependencies": {
-  },
+  "dependencies": {},
   "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee"
 }
