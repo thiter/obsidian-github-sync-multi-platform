@@ -43,6 +43,27 @@ export const hashContent = function (content: string): string {
 }
 
 /**
+ * computeGitBlobSha
+ * 计算与 Git / GitHub 完全一致的标准 Git Blob SHA-1
+ * 格式：SHA1("blob " + size + "\0" + content)
+ */
+export const computeGitBlobSha = async function (content: string | ArrayBuffer): Promise<string> {
+  let buffer: Uint8Array;
+  if (typeof content === "string") {
+    buffer = new TextEncoder().encode(content);
+  } else {
+    buffer = new Uint8Array(content);
+  }
+  const header = new TextEncoder().encode(`blob ${buffer.byteLength}\0`);
+  const total = new Uint8Array(header.byteLength + buffer.byteLength);
+  total.set(header, 0);
+  total.set(buffer, header.byteLength);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", total);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
  * showErrorDialog
  * 显示一个错误对话框，内容为传入的消息
  * @param message - 要显示的错误消息

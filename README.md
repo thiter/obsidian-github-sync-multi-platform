@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=9437ff&label=downloads&query=github-sync-multi-platform.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=flat-square)](https://obsidian.md/plugins?id=github-sync-multi-platform)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-[English](#english) | [简体中文](#chinese)
+[English](#english) | [繁體中文](#traditional-chinese) | [简体中文](#chinese)
 
 ---
 
@@ -22,7 +22,7 @@ Unlike traditional Git-based plugins, this tool interacts directly with the GitH
 -   **Real-time Auto-Sync**: Intelligent event listening triggers synchronization on file modification with a 5-second debounce to optimize API usage.
 -   **Serverless Architecture**: No middle-man server required. Your data goes directly to your private GitHub repository.
 -   **Conflict Resolution**: Built-in hash-based change detection to minimize sync conflicts.
--   **Binary File Support**: Handles images and attachments efficiently (up to 10MB per file).
+-   **Multi-File Type Support**: Markdown synced as text; other Vault files like DOCX, XLSX, PDF, Canvas, JSON, images synced as binary (up to 10MB per file).
 -   **Visual Dashboard**: Support for a web-based dashboard to visualize your writing progress and sync stats.
 
 ## 🛠 Tech Stack
@@ -70,7 +70,7 @@ For detailed information about synchronization mechanisms, incremental sync, and
 -   **实时自动同步**：智能监听文件修改事件，内置 5 秒防抖（Debounce）逻辑，平衡实时性与 API 调用额度。
 -   **无服务器架构**：数据直接点对点传输至您的私有 GitHub 仓库，隐私安全。
 -   **冲突检测**：基于内容哈希的智能检测，最大限度减少同步冲突。
--   **附件支持**：高效处理图片等二进制附件（支持单文件最高 10MB）。
+-   **多文件类型支持**：Markdown 以文本方式同步，DOCX、XLSX、PDF、Canvas、JSON、图片等其他 Vault 文件以二进制方式同步（单文件最高 10MB）。
 -   **可视化看板**：配套数据看板，直观展示写作进度与同步状态。
 
 ## 🛠 技术架构
@@ -101,6 +101,58 @@ For detailed information about synchronization mechanisms, incremental sync, and
 ## ❓ 常见问题 (FAQ)
 
 关于同步机制、增量同步以及多设备冲突处理的详细说明，请参阅 [常见问题解答 (FAQ)](docs/FAQ.md)。
+
+---
+
+<a name="traditional-chinese"></a>
+
+## 🚀 專案簡介
+
+**Github-Sync-Multi-Platform** 是一款高效能、無伺服器的 Obsidian 同步方案。它直接使用 GitHub REST API，在桌面端（Windows/macOS/Linux）與行動裝置（iOS/Android）之間提供即時同步體驗。
+
+與傳統依賴 Git 指令列的同步外掛不同，本專案直接透過 GitHub API 操作，因此行動裝置不需要額外安裝 Git 環境，設定更簡單，也能維持跨平台一致的同步流程。
+
+### ✨ 核心功能
+
+-   **原生行動裝置支援**：支援 iOS 與 Android，不需要 Git 執行檔。
+-   **即時自動同步**：監聽檔案修改事件，內建 5 秒 Debounce，降低不必要的 API 呼叫。
+-   **無伺服器架構**：資料直接同步到你的 GitHub Repository，不需要額外架設中介伺服器。
+-   **衝突偵測**：透過內容 Hash 與 GitHub SHA 判斷變更，減少不必要的重複同步。
+-   **多檔案類型支援**：Markdown 以文字方式同步；DOCX、XLSX、PDF、Canvas、JSON、圖片等其他 Vault 檔案則以 Binary 方式同步（單一檔案最高 10 MB）。
+-   **視覺化看板**：可搭配網頁式 Dashboard 顯示寫作進度與同步統計。
+
+## 🛠 技術架構
+
+-   **核心**：TypeScript、Obsidian Plugin API
+-   **介面**：原生 CSS、Obsidian 設定元件
+-   **網路**：GitHub REST API (v3)
+-   **建置**：esbuild
+
+## 📥 安裝方式
+
+1. 開啟 Obsidian **設定** > **第三方外掛**。
+2. 關閉 **受限模式（Restricted mode）**。
+3. 點擊 **瀏覽**，搜尋 `Github Sync (Multi-Platform)`。
+4. 點擊 **安裝**，再啟用外掛。
+
+也可以從 Release 頁面下載最新版本，將 `main.js`、`manifest.json`、`styles.css` 放到：
+
+```text
+<Vault>/.obsidian/plugins/github-sync-multi-platform/
+```
+
+## ⚙️ 設定方式
+
+1. **GitHub Token**：建立具有 Repository 存取權限的 Personal Access Token (PAT)。
+2. **Repository 設定**：
+   - **Owner**：GitHub 使用者名稱或組織名稱。
+   - **Repo**：用來存放 Obsidian Vault 的 Repository 名稱。
+   - **Branch**：通常為 `main`。
+3. **同步選項**：開啟「啟用同步」即可使用即時同步功能。
+
+## ❓ 常見問題
+
+關於雙向同步、增量同步與衝突處理方式，請參考 [FAQ](docs/FAQ.md)。
 
 ---
 
