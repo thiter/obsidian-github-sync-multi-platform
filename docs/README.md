@@ -1,7 +1,7 @@
 # Obsidian-Github-Sync-Multi-Platform
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/Zhang-cm/Obsidian-Github-Sync-Multi-Platform?style=flat-square)](https://github.com/Zhang-cm/Obsidian-Github-Sync-Multi-Platform/releases)
-[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=9437ff&label=downloads&query=obsidian-github-sync-multi-platform.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=flat-square)](https://obsidian.md/plugins?id=obsidian-github-sync-multi-platform)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/thiter/obsidian-github-sync-multi-platform?style=flat-square)](https://github.com/thiter/obsidian-github-sync-multi-platform/releases)
+[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=9437ff&label=downloads&query=github-sync-multi-platform.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=flat-square)](https://obsidian.md/plugins?id=github-sync-multi-platform)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 [English](#english) | [简体中文](#chinese)
