@@ -144,9 +144,10 @@ jobs:
             exit 0
           fi
           # 1) 先同步 commit 与 tag 到 CNB —— Release 必须挂在真实 tag 上才会持久
+          #    注意：tag 是软 props 在远程创建的，runner 本地没有该 tag，
+          #    所以用 HEAD:refs/tags/<TAG> 直接构造，避免 src refspec 不存在。
           CNB_URL="https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_SLUG}.git"
-          git push -f "$CNB_URL" "HEAD:refs/heads/master"
-          git push -f "$CNB_URL" "refs/tags/${TAG}:refs/tags/${TAG}"
+          git push -f "$CNB_URL" "HEAD:refs/heads/master" "HEAD:refs/tags/${TAG}"
           # 2) 创建同名 Release 并上传同样附件
           bash scripts/cnb-mirror-release.sh
 
