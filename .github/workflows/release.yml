@@ -70,27 +70,38 @@ jobs:
               echo "should_release=false" >> $GITHUB_OUTPUT
             fi
           fi
-      - name: Prepare Commit Message
+      - name: Prepare Release Notes
         id: prepare
         if: steps.check_version.outputs.should_release == 'true'
         run: |
-          # 获取提交文本信息
-          msg=$(git log -1 --pretty=%B)
+          TAG="${{ steps.check_version.outputs.release_tag }}"
+          NOTES=""
 
-          # 设置 Python 进行翻译
-          pip install deep-translator > /dev/null 2>&1 || true
-
-          # 运行翻译脚本
-          export COMMIT_MSG="$msg"
-
-          echo "commit_msg<<EOF" >> $GITHUB_OUTPUT
-          if [ -f "scripts/translate_commit.py" ]; then
-              python3 scripts/translate_commit.py >> $GITHUB_OUTPUT
+          # 优先用 CHANGELOG.md 里该版本的章节——这是面向用户的权威更新说明。
+          # 不再翻译 commit message：一是内容常常是 CI/重构类提交，用户看不懂；
+          # 二是 Google 翻译有速率限制，失败时的报错会污染 Release 正文。
+          if [ -f CHANGELOG.md ] && python3 scripts/extract-changelog.py "$TAG" > /tmp/release_notes.md 2>/dev/null; then
+            NOTES=$(cat /tmp/release_notes.md)
+            echo "已从 CHANGELOG.md 提取 $TAG 的更新内容（$(echo "$NOTES" | wc -l) 行）"
           else
-              echo "未找到翻译脚本，使用原始消息"
-              echo "$msg" >> $GITHUB_OUTPUT
+            NOTES=$(git log -1 --pretty=%B)
+            echo "CHANGELOG.md 中没有 $TAG 章节，回退为提交信息"
           fi
-          echo "EOF" >> $GITHUB_OUTPUT
+
+          # 补回 "Full Changelog" 对比链接（新 tag 此刻只存在于远端，本地取上一个 tag 即可）
+          # 用 printf 拼接：正文若直接写在 YAML block scalar 里且顶到第 0 列会截断缩进块
+          PREV_TAG=$(git tag --sort=-v:refname | head -n 1)
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+            NOTES=$(printf '%s\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s' \
+              "$NOTES" "$GITHUB_REPOSITORY" "$PREV_TAG" "$TAG")
+            echo "对比区间: ${PREV_TAG}...${TAG}"
+          fi
+
+          {
+            echo "release_notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+          } >> $GITHUB_OUTPUT
       - name: Build
         id: build
         # 只有在 check_version 步骤输出 should_release 为 true 时才执行
@@ -114,8 +125,9 @@ jobs:
           name: ${{ steps.check_version.outputs.release_tag }}
           draft: false
           prerelease: false
-          generate_release_notes: true
-          body: ${{ steps.prepare.outputs.commit_msg }}
+          # body 显式提供时，generate_release_notes 不会生效，设为 false 避免误解
+          generate_release_notes: false
+          body: ${{ steps.prepare.outputs.release_notes }}
           target_commitish: ${{ github.sha }} # 明确指定在当前分支的 commit 上创建 tag
           overwrite_files: true
           files: |
@@ -135,7 +147,7 @@ jobs:
           CNB_SLUG: weiguanghui/chunmiao/obsidian-github-sync-multi-platform-cnb
           TAG: ${{ steps.check_version.outputs.release_tag }}
           NAME: ${{ env.NAME }}
-          BODY: ${{ steps.prepare.outputs.commit_msg }}
+          BODY: ${{ steps.prepare.outputs.release_notes }}
           FILES: ${{ env.NAME }}-v${{ steps.check_version.outputs.release_tag }}.zip main.js manifest.json styles.css
         run: |
           set -euo pipefail
