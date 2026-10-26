@@ -73,27 +73,30 @@ jobs:
                    echo "should_release=false" >> $GITHUB_OUTPUT
                fi
             fi
-      - name: Prepare Commit Message
+      - name: Prepare Release Notes
         id: prepare
         if: steps.check_version.outputs.should_release == 'true'
         run: |
-          # 获取提交文本信息
-          msg=$(git log -1 --pretty=%B)
+          TAG="${{ steps.check_version.outputs.release_tag }}"
+          NOTES=""
 
-          # 设置 Python 进行翻译
-          pip install deep-translator > /dev/null 2>&1 || true
-
-          # 运行翻译脚本
-          export COMMIT_MSG="$msg"
-
-          echo "commit_msg<<EOF" >> $GITHUB_OUTPUT
-          if [ -f "scripts/translate_commit.py" ]; then
-              python3 scripts/translate_commit.py >> $GITHUB_OUTPUT
+          # 与 release.yml 保持一致：正文取 CHANGELOG.md 该版本章节，不翻译 commit message
+          if [ -f CHANGELOG.md ] && python3 scripts/extract-changelog.py "$TAG" > /tmp/release_notes.md 2>/dev/null; then
+            NOTES=$(cat /tmp/release_notes.md)
+            echo "已从 CHANGELOG.md 提取 $TAG 的更新内容"
           else
-              echo "未找到翻译脚本，使用原始消息"
-              echo "$msg" >> $GITHUB_OUTPUT
+            NOTES=$(git log -1 --pretty=%B)
+            echo "CHANGELOG.md 中没有 $TAG 章节，回退为提交信息"
           fi
-          echo "EOF" >> $GITHUB_OUTPUT
+
+          # 预发布明确标注，避免被当成正式版本
+          NOTES=$(printf '> ⚠️ 预发布版本（%s-alpha），仅用于测试，请勿在日常笔记库中使用。\n\n%s' "$TAG" "$NOTES")
+
+          {
+            echo "release_notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+          } >> $GITHUB_OUTPUT
       - name: Build
         id: build
         # 只有在 check_version 步骤输出 should_release 为 true 时才执行
@@ -117,8 +120,9 @@ jobs:
           name: ${{ steps.check_version.outputs.release_tag }}-alpha
           draft: false
           prerelease: true
-          generate_release_notes: true
-          body: ${{ steps.prepare.outputs.commit_msg }}
+          # body 显式提供时 generate_release_notes 不生效，设为 false 避免误解
+          generate_release_notes: false
+          body: ${{ steps.prepare.outputs.release_notes }}
           target_commitish: ${{ github.sha }} # 明确指定在当前分支的 commit 上创建 tag
           overwrite_files: true
           files: |
