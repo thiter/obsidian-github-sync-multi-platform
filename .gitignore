@@ -22,3 +22,9 @@ data.json
 .DS_Store
 /src/dist
 /src/views/dist
+
+# 本地构建产物（Release 由 CI 产出并上传，不入库）
+github-sync-multi-platform-v*.zip
+
+# 本地项目数据目录
+.workbuddy/
