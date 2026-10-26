@@ -1,0 +1,51 @@
+name: Mirror Code to CNB
+
+# 纯代码镜像：GitHub master 每次提交都同步到 CNB，与 Release 无关。
+# 目的：让 CNB 仓库始终是 GitHub 的完整代码镜像，而不只是发版那一刻的快照。
+on:
+  push:
+    branches:
+      - "master"
+  # 支持手动补同步（例如某次推送失败后重跑）
+  workflow_dispatch:
+
+# 只需要读自己的仓库，写权限由 CNB_TOKEN 提供
+permissions:
+  contents: read
+
+# 同组串行，避免与 Release 工作流的镜像步骤同时写 CNB 造成竞争
+concurrency:
+  group: cnb-sync
+  cancel-in-progress: false
+
+env:
+  CNB_SLUG: weiguanghui/chunmiao/obsidian-github-sync-multi-platform-cnb
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # 需要完整历史与 tag
+
+      - name: Push code and tags to CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CNB_TOKEN:-}" ]; then
+            echo "未配置 CNB_TOKEN secret，跳过代码镜像"
+            exit 0
+          fi
+
+          # 与 Release 工作流共用并发组，避免两者同时 force push
+          CNB_URL="https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_SLUG}.git"
+
+          echo "同步 ${GITHUB_SHA:0:7} -> CNB master"
+          # 只镜像 master 与 tag，不推其它分支（临时/特性分支属于本地过程）
+          git push -f "$CNB_URL" "HEAD:refs/heads/master" "--tags"
+
+          echo "=== CNB 侧确认 ==="
+          git ls-remote "$CNB_URL" refs/heads/master | sed 's/\t/  /'

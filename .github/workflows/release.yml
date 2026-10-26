@@ -22,6 +22,10 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 与 Mirror Code 工作流共用并发组，避免两者同时向 CNB 强制推送
+    concurrency:
+      group: cnb-sync
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v6
