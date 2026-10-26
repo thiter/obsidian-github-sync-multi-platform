@@ -10,6 +10,8 @@ on:
       - "*"
     paths:
       - "manifest.json"
+  # 支持手动触发（用于补发历史遗漏版本或重跑）
+  workflow_dispatch:
 # 权限配置：允许脚本写入仓库内容（用于发布 Release）
 permissions:
   contents: write
@@ -39,50 +41,34 @@ jobs:
       - name: Check Version
         id: check_version
         run: |
-          # 如果是 master 分支触发
-          if [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
-            echo "Triggered by master branch. Checking for version bump..."
+          CURRENT_VERSION=$(jq -r .version manifest.json)
+          echo "Current manifest version: $CURRENT_VERSION"
 
-            # 获取上一个 commit 的版本号
-            LAST_VERSION=$(git show HEAD~1:manifest.json | jq -r .version)
-
-            # 从 manifest.json 中读取当前版本号
-            CURRENT_VERSION=$(jq -r .version manifest.json)
-
-            echo "Last Version: $LAST_VERSION"
-            echo "Current Version: $CURRENT_VERSION"
-
-            # 对比版本号
-            if [ "$LAST_VERSION" = "$CURRENT_VERSION" ]; then
-               echo "Version has not changed. Skipping."
-               # 输出变量 should_release = false，后续步骤会通过 if 判断跳过
-               echo "should_release=false" >> $GITHUB_OUTPUT
-            else
-               # check if current > last
-               # 使用 sort -V 进行版本号大小比较
-               # 取较大值
-               HIGHER_VERSION=$(echo -e "$LAST_VERSION\n$CURRENT_VERSION" | sort -V | tail -n 1)
-               if [ "$HIGHER_VERSION" = "$CURRENT_VERSION" ]; then
-                   echo "New version detected!"
-                   # 确认需要发布
-                   echo "should_release=true" >> $GITHUB_OUTPUT
-                   # 设置发布的 tag 名称为当前版本号
-                   echo "release_tag=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-                   # Create tag locally so we can push it later (or just use Release API to tag)
-                   # Since we use create-release action using 'tag_name', it often expects the tag to exist or it creates it.
-                   # Let's rely on create-release to create the tag if we pass a tag name that doesn't exist?
-                   # Actually actions/create-release usually creates a release object which creates the git tag.
-               else
-                   echo "Current version $CURRENT_VERSION is lower than $LAST_VERSION. Skipping."
-                   echo "should_release=false" >> $GITHUB_OUTPUT
-               fi
-            fi
-          else
-            # 如果是 tag 触发 (手动打 tag 推送)
-            echo "Triggered by tag ${{ github.ref }}. Proceeding with release."
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # 手动打 tag 触发，直接发布
+            echo "Triggered by tag ${{ github.ref_name }}. Proceeding."
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "release_tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            # 以「最新已发布 Release 的 tag」为基准，而不是 HEAD~1。
+            # 这样即使版本变更不在最后一个提交里，也不会漏发。
+            LATEST_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+              | jq -r '.tag_name // empty')
+            LAST_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+            [ -z "$LAST_VERSION" ] && LAST_VERSION="0.0.0"
+            echo "Latest released version: $LAST_VERSION"
+
+            HIGHER_VERSION=$(printf '%s\n%s\n' "$LAST_VERSION" "$CURRENT_VERSION" | sort -V | tail -n 1)
+            if [ "$CURRENT_VERSION" != "$LAST_VERSION" ] && [ "$HIGHER_VERSION" = "$CURRENT_VERSION" ]; then
+              echo "New version detected: $LAST_VERSION -> $CURRENT_VERSION"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "release_tag=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            else
+              echo "No new version (latest=$LAST_VERSION, current=$CURRENT_VERSION). Skipping."
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            fi
           fi
       - name: Prepare Commit Message
         id: prepare
