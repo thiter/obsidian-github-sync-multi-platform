@@ -1,8 +1,9 @@
 import { Plugin, setIcon } from "obsidian";
 
-import { NoteModify, NoteDelete, NoteRename, StartupFullNotesForceOverSync, StartupFullNotesSync } from "./lib/fs";
+import { NoteModify, NoteDelete, NoteRename, StartupFullNotesForceOverSync, StartupFullNotesSync, StartupFullNotesForcePullSync } from "./lib/fs";
 import { SettingTab, PluginSettings, DEFAULT_SETTINGS } from "./setting";
 import { GitHubClient } from "./lib/github-api";
+import { ConfirmModal } from "./lib/modal";
 import { $, moment } from "./lang/lang";
 import { calculateWordCount } from "./lib/helps";
 
@@ -94,6 +95,23 @@ export default class FastSync extends Plugin {
       id: "init-all-files",
       name: $("同步全部笔记(覆盖远端)"),
       callback: () => StartupFullNotesForceOverSync(this),
+    })
+
+    this.addCommand({
+      id: "download-force-init-all-files",
+      name: $("同步全部笔记(覆盖本地/强制初始化)"),
+      callback: () => {
+        new ConfirmModal(
+          this.app,
+          $("覆盖本地确认"),
+          $("警告：此操作将从 GitHub 远端下载最新快照并覆盖本地笔记！本地未同步的修改将被丢弃，远端不存在的本地文件将被清理。确定要继续吗？"),
+          $("确认覆盖本地"),
+          () => {
+            StartupFullNotesForcePullSync(this);
+          },
+          $("取消")
+        ).open();
+      },
     })
 
     this.addCommand({

@@ -43,6 +43,15 @@ const en: Partial<LangMap> = {
   "输入您的 GitHub 仓库名": "Enter your GitHub repository name",
   "输入您的 GitHub 分支名": "Enter your GitHub branch name (e.g., main)",
   "输入您的 GitHub 访问令牌": "Enter your GitHub personal access token",
+  "同步全部笔记(覆盖本地/强制初始化)": "Sync all notes (overwrite local / force init)",
+  "覆盖本地确认": "Confirm Overwrite Local",
+  "警告：此操作将从 GitHub 远端下载最新快照并覆盖本地笔记！本地未同步的修改将被丢弃，远端不存在的本地文件将被清理。确定要继续吗？": "Warning: This operation will download the latest snapshot from GitHub and overwrite local notes! Any unsynced local changes will be discarded, and local files that do not exist on remote will be removed. Are you sure you want to proceed?",
+  "确认覆盖本地": "Overwrite Local",
+  "取消": "Cancel",
+  "正在下载远端快照(Zipball)...": "Downloading remote snapshot (Zipball)...",
+  "正在解压并同步到本地...": "Unpacking and syncing to local...",
+  "远端笔记已成功覆盖至本地！": "Remote notes have been successfully overwritten to local!",
+  "远端仓库为空，没有可下载的内容": "Remote repository is empty, nothing to download",
 }
 
 export default en;
