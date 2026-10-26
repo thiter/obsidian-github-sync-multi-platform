@@ -140,4 +140,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 把本次 GitHub Release 镜像到 CNB：同名 tag + 同样的附件
+      - name: Mirror Release to CNB
+        if: steps.check_version.outputs.should_release == 'true'
+        continue-on-error: true
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_SLUG: weiguanghui/chunmiao/obsidian-github-sync-multi-platform-cnb
+          TAG: ${{ steps.check_version.outputs.release_tag }}
+          NAME: ${{ env.NAME }}
+          BODY: ${{ steps.prepare.outputs.commit_msg }}
+          FILES: ${{ env.NAME }}-v${{ steps.check_version.outputs.release_tag }}.zip main.js manifest.json styles.css
+        run: |
+          set -euo pipefail
+          if [ -z "${CNB_TOKEN}" ]; then
+            echo "未配置 CNB_TOKEN secret，跳过 CNB 镜像"
+            exit 0
+          fi
+          # 1) 先同步 commit 与 tag 到 CNB —— Release 必须挂在真实 tag 上才会持久
+          CNB_URL="https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_SLUG}.git"
+          git push -f "$CNB_URL" "HEAD:refs/heads/master"
+          git push -f "$CNB_URL" "refs/tags/${TAG}:refs/tags/${TAG}"
+          # 2) 创建同名 Release 并上传同样附件
+          bash scripts/cnb-mirror-release.sh
+
 
