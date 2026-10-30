@@ -31,3 +31,14 @@ github-sync-multi-platform-v*.zip
 
 # Test artifacts
 .tmp-test/
+
+# 内部研发设计规范与规划文档（本地保留，远端不展示）
+docs/internal/
+
+# 本地测试套件与自测运行脚本（本地保留，远端不展示）
+tests/
+scripts/run-tests.mjs
+
+# 包管理器本地缓存与 npm 锁文件
+.pnpm-store/
+package-lock.json

@@ -50,6 +50,10 @@ Unlike traditional Git-based plugins, this tool interacts directly with the GitH
     -   **Branch**: Typically `main`.
 3.  **Sync Options**: Enable "Auto Sync" for the real-time experience.
 
+## 📖 Commands Guide
+
+For comprehensive explanations of all synchronization commands (`Sync all notes`, `Sync all notes (overwrite remote)`, `Sync all notes (overwrite local / force init)`) and safety circuit breakers, please check the [Commands Guide](docs/COMMANDS.md).
+
 ## ❓ FAQ
 
 For detailed information about synchronization mechanisms, incremental sync, and conflict resolution, please refer to our [FAQ Document](docs/FAQ.md).
@@ -97,6 +101,10 @@ For detailed information about synchronization mechanisms, incremental sync, and
     -   **Repo**: 您的私有笔记仓库名称。
     -   **Branch**: 默认为 `main`。
 3.  **Sync Options**: 开启“启用同步”即可享受实时同步体验。
+
+## 📖 核心命令指南
+
+关于 Obsidian 命令面板中各同步命令（`同步全部笔记`、`同步全部笔记(覆盖远端)`、`同步全部笔记(覆盖本地/强制初始化)`）的底层机制与防灾熔断保护，请参阅 [核心命令与功能详解](docs/COMMANDS.md)。
 
 ## ❓ 常见问题 (FAQ)
 
@@ -149,6 +157,10 @@ For detailed information about synchronization mechanisms, incremental sync, and
    - **Repo**：用來存放 Obsidian Vault 的 Repository 名稱。
    - **Branch**：通常為 `main`。
 3. **同步選項**：開啟「啟用同步」即可使用即時同步功能。
+
+## 📖 核心指令指南
+
+關於各同步指令（`同步全部筆記`、`同步全部筆記(覆蓋遠端)`、`同步全部筆記(覆蓋本地/強制初始化)`）的詳細機制與安全保護，請參考 [核心指令與功能說明](docs/COMMANDS.md)。
 
 ## ❓ 常見問題
 
