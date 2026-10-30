@@ -5,6 +5,7 @@ import FastSync from "../main";
 import { GitHubClient, GitHubTreeNode, GitTreeEntry } from "./github-api";
 import { unzip, Unzipped } from "fflate";
 import { $ } from "../lang/lang";
+import { showConfirmModal } from "./modal";
 import {
   MAX_FILE_SIZE,
   UnifiedSyncFile,
@@ -16,6 +17,15 @@ import {
   isPathBlocked,
   isWhitelistedHiddenPath,
 } from "./storage";
+
+/**
+ * 熔断判定：当待删除文件数 >= 5 或占总跟踪文件比例 >= 30%（且 >= 2）时触发熔断
+ */
+export function isMassDeletion(deleteCount: number, totalTracked: number): boolean {
+  if (deleteCount >= 5) return true;
+  if (totalTracked >= 5 && deleteCount >= 2 && deleteCount / totalTracked >= 0.3) return true;
+  return false;
+}
 
 /**
  * 递归确保多级目录存在
@@ -110,26 +120,57 @@ export const NoteDelete = async function (file: TAbstractFile, plugin: FastSync,
     const prefix = file.path.endsWith("/") ? file.path : `${file.path}/`;
     const matchingPaths = Object.keys(plugin.syncData.files).filter(p => p.startsWith(prefix));
 
+    if (matchingPaths.length === 0) return;
+
+    // 熔断与防灾保护：如果文件夹下包含 >= 5 个子文件，进行二次确认，防止误删整个顶级目录
+    if (matchingPaths.length >= 5) {
+      const confirmed = await showConfirmModal(
+        plugin.app,
+        $("确认删除远端文件夹"),
+        $(`您在本地删除了文件夹 ${file.path}（包含 ${matchingPaths.length} 个笔记），确定要同步删除远端的对应文件吗？`),
+        $("确认同步删除远端"),
+        $("取消")
+      );
+      if (!confirmed) {
+        new Notice($("已取消同步删除远端文件夹"));
+        return;
+      }
+    }
+
     for (const path of matchingPaths) {
       if (plugin.debounceTimers.has(path)) {
         clearTimeout(plugin.debounceTimers.get(path));
         plugin.debounceTimers.delete(path);
       }
       plugin.addIgnoredFile(path);
-      try {
-        const sha = plugin.syncData.files[path]?.sha;
-        if (sha) {
-          await plugin.githubClient.deleteFile(path, sha);
-          delete plugin.syncData.files[path];
-          dump(`Deleted subfile ${path} from GitHub`);
-        }
-      } catch (error) {
-        console.error(`Delete failed for folder subfile ${path}:`, error);
-      } finally {
+    }
+
+    // 使用 Git Data API 原子批量提交删除，杜绝循环 deleteFile 产生的 API 洪峰与 403 限流！
+    const treeEntries: GitTreeEntry[] = matchingPaths.map((p) => ({
+      path: p,
+      mode: "100644",
+      type: "blob",
+      sha: null,
+    }));
+
+    try {
+      await plugin.githubClient.commitBatch(
+        `sync: delete folder ${file.path} (${matchingPaths.length} files)`,
+        treeEntries
+      );
+      for (const path of matchingPaths) {
+        delete plugin.syncData.files[path];
+      }
+      await plugin.saveSyncData();
+      dump(`Batch deleted folder ${file.path} via Git Data API`);
+    } catch (error) {
+      console.error(`Folder batch delete failed:`, error);
+      new Notice(`Folder delete failed: ${(error as Error).message}`);
+    } finally {
+      for (const path of matchingPaths) {
         plugin.removeIgnoredFile(path);
       }
     }
-    await plugin.saveSyncData();
     return;
   }
 
@@ -306,8 +347,11 @@ export const NoteRename = async function (file: TAbstractFile, oldfile: string, 
 };
 
 /**
- * 强制全量覆盖远端
+ * 强制全量覆盖远端 (Upsert 增量覆写模式)
  * 基于 Git Data API：本地全量树一次性打包提交，生成单个原子 Commit
+ * 核心安全机制：
+ * 1. 零笔记保护：本地无有效笔记时终止操作；
+ * 2. 保留 baseTreeSha：远端已有但本地没有的文件百分之百安全保留，彻底杜绝空目录清空远端！
  */
 export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void> {
   if (plugin.isSyncInProgress) {
@@ -323,6 +367,15 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
   plugin.disableWatch();
 
   try {
+    const syncFilesMap = await getAllVaultSyncFiles(plugin.app.vault);
+    const syncFiles = Array.from(syncFilesMap.values());
+
+    // 零笔记安全拦截（Zero-Note Guard）
+    if (syncFiles.length === 0) {
+      new Notice($("本地未检测到有效笔记，已终止覆盖远端以保护数据安全！"));
+      return;
+    }
+
     // 1. 获取远端 Tree 进行 SHA 对比，内容已完全一致的文件直接跳过，绝不重复上传
     let remoteFilesMap = new Map<string, string>();
     try {
@@ -334,11 +387,9 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
       console.warn("Failed to get remote tree in override, will fall back to cache check:", e);
     }
 
-    const syncFilesMap = await getAllVaultSyncFiles(plugin.app.vault);
-    const syncFiles = Array.from(syncFilesMap.values());
-
     const treeEntries: GitTreeEntry[] = [];
-    const updatedSyncData: { [path: string]: { sha: string; lastSync: number; hash: string } } = {};
+    // 平滑合并：克隆已有的 syncData.files，保证远端已存在但本地没有的文件状态不丢失
+    const updatedSyncData = { ...plugin.syncData.files };
 
     new Notice(`Preparing ${syncFiles.length} files for remote override...`);
 
@@ -367,11 +418,11 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
       };
     }
 
-    // 2. 将整棵树作为全新根树一次性提交 (explicitBaseTreeSha: null 表示全新根树，自动清理远端孤儿文件)
+    // 2. 将整棵树作为补丁提交 (不传 explicitBaseTreeSha，默认使用父 commit 的 tree SHA 作为 base_tree！)
+    // 从而实现 Upsert：本地变动/新增文件覆盖远端，远端已存在的其它文件完整保留！
     await plugin.githubClient.commitBatch(
-      `sync: override remote with all local assets (${syncFiles.length} files)`,
-      treeEntries,
-      null
+      `sync: upsert override remote with local assets (${syncFiles.length} files)`,
+      treeEntries
     );
 
     // 3. 更新同步元数据
@@ -463,6 +514,16 @@ export async function forcePullRemoteAllFilesImpl(plugin: FastSync): Promise<voi
 
     // 1. 获取本地全量同步文件 (包含 .github/ 白名单目录)
     const localFilesMap = await getAllVaultSyncFiles(plugin.app.vault);
+
+    // 安全熔断检查：远端文件数异常防护，防止拉取空仓库或异常缩水仓库误清空本地笔记
+    if (remoteFilesMap.size === 0) {
+      new Notice($("远端仓库未检测到有效笔记，已终止覆盖本地以防止数据丢失！"));
+      return;
+    }
+    if (localFilesMap.size >= 5 && remoteFilesMap.size < localFilesMap.size * 0.3) {
+      new Notice($("远端笔记数量异常缩水，已终止覆盖本地以防止数据丢失！"));
+      return;
+    }
 
     // 2. 清理本地存在但远端已被删除或不存在的孤儿文件
     for (const localPath of localFilesMap.keys()) {
@@ -604,11 +665,13 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
 
     const localFilesMap = await getAllVaultSyncFiles(plugin.app.vault);
     const allLocalFiles = Array.from(localFilesMap.values());
+    const totalTracked = Object.keys(plugin.syncData.files).length;
 
     // ----------------------------------------------------
     // 步骤 1: 检查“远端已被删除”的文件（被其他设备删除）
-    // 如果 syncData 有记录，但远端 Tree 已经没有了：说明远端删除了该文件，本地同步删除
+    // 熔断防护：如果删除数量 >= 5 或占总跟踪文件 >= 30%，严禁静默删除本地！
     // ----------------------------------------------------
+    const localFilesToDelete: string[] = [];
     for (const trackedPath of Object.keys(plugin.syncData.files)) {
       if (isPathBlocked(trackedPath)) {
         delete plugin.syncData.files[trackedPath];
@@ -616,23 +679,54 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
       }
       if (!remoteFilesMap.has(trackedPath)) {
         if (localFilesMap.has(trackedPath)) {
-          plugin.addIgnoredFile(trackedPath);
-          try {
-            await safeDeleteSyncFile(plugin.app.vault, trackedPath);
-            localFilesMap.delete(trackedPath);
-          } catch (delErr) {
-            console.error(`Failed to delete local file ${trackedPath}:`, delErr);
-          } finally {
-            plugin.removeIgnoredFile(trackedPath);
-          }
+          localFilesToDelete.push(trackedPath);
+        } else {
+          // 本地早已不存在，安全移除冗余跟踪记录
+          delete plugin.syncData.files[trackedPath];
         }
-        delete plugin.syncData.files[trackedPath];
+      }
+    }
+
+    let allowLocalDelete = true;
+    if (localFilesToDelete.length > 0) {
+      if (isMassDeletion(localFilesToDelete.length, totalTracked)) {
+        // 触碰熔断门限，弹出阻塞确认
+        const confirmed = await showConfirmModal(
+          plugin.app,
+          $("🚨 安全熔断拦截：检测到批量文件删除"),
+          $(`警告：检测到远端有 ${localFilesToDelete.length} 个文件已被删除（超过安全保护阈值）！为防止误操作导致本地笔记丢失，已暂停同步。是否确认在本地也同步删除这些文件？`),
+          $("确认批量删除本地文件"),
+          $("取消并保留本地文件")
+        );
+        if (!confirmed) {
+          allowLocalDelete = false;
+          new Notice($("已取消批量删除，本地文件已完整保留。"));
+        }
+      }
+    }
+
+    if (allowLocalDelete) {
+      for (const trackedPath of localFilesToDelete) {
+        plugin.addIgnoredFile(trackedPath);
+        try {
+          await safeDeleteSyncFile(plugin.app.vault, trackedPath);
+          localFilesMap.delete(trackedPath);
+          delete plugin.syncData.files[trackedPath];
+        } catch (delErr) {
+          console.error(`Failed to delete local file ${trackedPath}:`, delErr);
+        } finally {
+          plugin.removeIgnoredFile(trackedPath);
+        }
       }
     }
 
     // ----------------------------------------------------
-    // 步骤 2: 遍历远端文件
+    // 步骤 2: 遍历远端文件，比对差异
+    // 收集推送到远端的本地变更 (写入和删除统一使用 Tree 批量提交，彻底杜绝 403 限流与 409 冲突)
     // ----------------------------------------------------
+    const remoteFilesToDelete: Array<{ path: string; sha: string }> = [];
+    const localFilesToPush: Array<{ path: string; content: ArrayBuffer; currentSha: string }> = [];
+
     for (const [path, remoteSha] of Array.from(remoteFilesMap.entries())) {
       try {
         const localFile = localFilesMap.get(path);
@@ -640,14 +734,8 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
 
         if (!localFile) {
           if (isTracked) {
-            // 本地删除了该文件，但远端还在 -> 同步删除远端文件
-            try {
-              await plugin.githubClient.deleteFile(path, remoteSha);
-              delete plugin.syncData.files[path];
-              dump(`Deleted remote file ${path} because it was deleted locally.`);
-            } catch (e) {
-              console.error(`Failed to delete remote file ${path}:`, e);
-            }
+            // 本地删除了该文件，但远端还在 -> 待同步删除远端文件
+            remoteFilesToDelete.push({ path, sha: remoteSha });
           } else {
             // 远端新建的文件 -> 下载到本地
             await downloadRemoteFile(path, remoteSha, plugin);
@@ -662,7 +750,7 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
             plugin.syncData.files[path] = {
               sha: remoteSha,
               lastSync: Date.now(),
-              hash: localSha
+              hash: localSha,
             };
           } else {
             // 内容不一致：
@@ -671,13 +759,8 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
               // 远端发生了修改，下载远端最新内容覆盖本地
               await downloadRemoteFile(path, remoteSha, plugin);
             } else {
-              // 本地发生了修改，推送到远端
-              const newSha = await plugin.githubClient.putFile(path, localContent, remoteSha);
-              plugin.syncData.files[path] = {
-                sha: newSha,
-                lastSync: Date.now(),
-                hash: localSha
-              };
+              // 本地发生了修改，收集待推送到远端
+              localFilesToPush.push({ path, content: localContent, currentSha: localSha });
             }
           }
         }
@@ -687,27 +770,89 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
     }
 
     // ----------------------------------------------------
-    // 步骤 3: 遍历本地文件，推送本地真正新建的文件
+    // 步骤 3: 遍历本地文件，收集真正新建的文件
     // ----------------------------------------------------
     for (const localFile of allLocalFiles) {
       const path = localFile.path;
       if (remoteFilesMap.has(path)) continue; // 已经在步骤 2 中处理
-      if (plugin.syncData.files[path]) continue; // 已经在步骤 1 中被确认为远端删除
+      if (plugin.syncData.files[path] && !allowLocalDelete) continue; // 熔断保护保留的文件不重复提交
 
       try {
         const content = await safeReadSyncFile(plugin.app.vault, localFile);
         const localSha = await computeGitBlobSha(content);
-        const newSha = await plugin.githubClient.putFile(path, content);
-        plugin.syncData.files[path] = {
-          sha: newSha,
-          lastSync: Date.now(),
-          hash: localSha
-        };
-      } catch (pushErr) {
-        console.error(`Step 3 failed for new local file ${path}:`, pushErr);
+        localFilesToPush.push({ path, content, currentSha: localSha });
+      } catch (readErr) {
+        console.error(`Step 3 failed reading local file ${path}:`, readErr);
       }
     }
-    
+
+    // ----------------------------------------------------
+    // 步骤 4: 远端删除熔断检查 + Git Data API 原子批量打包提交
+    // 告别 Contents API 单文件逐个循环提交，消除 403 限流与 409 HEAD 竞争！
+    // ----------------------------------------------------
+    let allowRemoteDelete = true;
+    if (remoteFilesToDelete.length > 0) {
+      if (isMassDeletion(remoteFilesToDelete.length, totalTracked)) {
+        const confirmed = await showConfirmModal(
+          plugin.app,
+          $("🚨 安全熔断拦截：检测到批量文件删除"),
+          $(`警告：检测到本地删除了 ${remoteFilesToDelete.length} 个受跟踪文件，即将同步删除远端！是否确认从 GitHub 远端删除这些文件？`),
+          $("确认删除远端文件"),
+          $("取消删除")
+        );
+        if (!confirmed) {
+          allowRemoteDelete = false;
+          new Notice($("已取消远端批量删除，远端文件已完整保留。"));
+        }
+      }
+    }
+
+    const treeEntries: GitTreeEntry[] = [];
+    const pendingSyncUpdates: { [path: string]: { sha: string; lastSync: number; hash: string } } = {};
+    const pendingDeletions: string[] = [];
+
+    // 上传待推送文件并收集 blob SHA
+    for (const item of localFilesToPush) {
+      const blobSha = await plugin.githubClient.createBlob(item.content);
+      treeEntries.push({
+        path: item.path,
+        mode: "100644",
+        type: "blob",
+        sha: blobSha,
+      });
+      pendingSyncUpdates[item.path] = {
+        sha: blobSha,
+        lastSync: Date.now(),
+        hash: item.currentSha,
+      };
+    }
+
+    // 收集待删除的远端文件
+    if (allowRemoteDelete) {
+      for (const item of remoteFilesToDelete) {
+        treeEntries.push({
+          path: item.path,
+          mode: "100644",
+          type: "blob",
+          sha: null,
+        });
+        pendingDeletions.push(item.path);
+      }
+    }
+
+    // 统一 1 次原子提交
+    if (treeEntries.length > 0) {
+      await plugin.githubClient.commitBatch(
+        `sync: 3-way sync (${localFilesToPush.length} updated, ${allowRemoteDelete ? remoteFilesToDelete.length : 0} deleted)`,
+        treeEntries
+      );
+      Object.assign(plugin.syncData.files, pendingSyncUpdates);
+      for (const delPath of pendingDeletions) {
+        delete plugin.syncData.files[delPath];
+      }
+      dump(`Atomic 3-way sync commit succeeded: ${treeEntries.length} entries`);
+    }
+
     await plugin.saveSyncData();
     plugin.updateStats().catch(e => console.error("Stats update failed:", e));
     new Notice("Sync completed");

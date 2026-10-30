@@ -94,7 +94,18 @@ export default class FastSync extends Plugin {
     this.addCommand({
       id: "init-all-files",
       name: $("同步全部笔记(覆盖远端)"),
-      callback: () => StartupFullNotesForceOverSync(this),
+      callback: () => {
+        new ConfirmModal(
+          this.app,
+          $("覆盖远端确认"),
+          $("警告：此操作将把本地笔记强制上传并覆盖 GitHub 远端同名文件！远端已存在但本地没有的文件将被安全保留。确定要继续吗？"),
+          $("确认覆盖远端"),
+          () => {
+            StartupFullNotesForceOverSync(this);
+          },
+          $("取消")
+        ).open();
+      },
     })
 
     this.addCommand({

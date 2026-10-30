@@ -52,6 +52,22 @@ const en: Partial<LangMap> = {
   "正在解压并同步到本地...": "Unpacking and syncing to local...",
   "远端笔记已成功覆盖至本地！": "Remote notes have been successfully overwritten to local!",
   "远端仓库为空，没有可下载的内容": "Remote repository is empty, nothing to download",
+  "覆盖远端确认": "Confirm Overwrite Remote",
+  "警告：此操作将把本地笔记强制上传并覆盖 GitHub 远端同名文件！远端已存在但本地没有的文件将被安全保留。确定要继续吗？": "Warning: This operation will force-upload local notes and overwrite identical files on GitHub remote! Files that exist on remote but not locally will be safely preserved. Are you sure you want to proceed?",
+  "确认覆盖远端": "Overwrite Remote",
+  "本地未检测到有效笔记，已终止覆盖远端以保护数据安全！": "No valid notes found locally, aborted remote override to protect your data!",
+  "远端仓库未检测到有效笔记，已终止覆盖本地以防止数据丢失！": "No valid notes found on remote repository, aborted local overwrite to prevent data loss!",
+  "远端笔记数量异常缩水，已终止覆盖本地以防止数据丢失！": "Remote notes drastically reduced, aborted local overwrite to prevent accidental loss!",
+  "🚨 安全熔断拦截：检测到批量文件删除": "🚨 Circuit Breaker: Mass Deletion Detected",
+  "确认批量删除本地文件": "Confirm Mass Deletion of Local Files",
+  "取消并保留本地文件": "Cancel & Keep Local Files",
+  "已取消批量删除，本地文件已完整保留。": "Mass deletion cancelled. Local files have been safely kept.",
+  "确认删除远端文件": "Confirm Delete Remote Files",
+  "取消删除": "Cancel Deletion",
+  "已取消远端批量删除，远端文件已完整保留。": "Remote mass deletion cancelled. Remote files have been safely kept.",
+  "确认删除远端文件夹": "Confirm Delete Remote Folder",
+  "确认同步删除远端": "Confirm Sync Delete to Remote",
+  "已取消同步删除远端文件夹": "Remote folder deletion cancelled",
 }
 
 export default en;

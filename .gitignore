@@ -28,3 +28,6 @@ github-sync-multi-platform-v*.zip
 
 # 本地项目数据目录
 .workbuddy/
+
+# Test artifacts
+.tmp-test/

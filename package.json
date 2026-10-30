@@ -1,12 +1,15 @@
 {
   "name": "github-sync-multi-platform",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Real-time note synchronization with GitHub API, supporting desktop and mobile devices.",
   "main": "main.js",
   "author": "thiter",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "devcss": "sass --watch src/styles.scss styles.css && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck",
+    "test": "node scripts/run-tests.mjs",
+    "check": "npm run typecheck && npm run test",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "ver": "node ./scripts/update-version.js"
   },

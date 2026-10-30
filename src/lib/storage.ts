@@ -183,12 +183,21 @@ export async function safeDeleteSyncFile(vault: Vault, path: string): Promise<vo
 
   if (existing) {
     const parent = existing.parent;
-    await vault.delete(existing);
+    try {
+      // 安全加固：强制移入系统废纸篓或 .trash 目录，确保物理可逆
+      await vault.trash(existing, true);
+    } catch {
+      await vault.delete(existing);
+    }
     let curParent = parent;
     while (curParent && curParent.children && curParent.children.length === 0 && curParent.path !== "" && curParent.path !== "/") {
       try {
         const nextParent = curParent.parent;
-        await vault.delete(curParent);
+        try {
+          await vault.trash(curParent, true);
+        } catch {
+          await vault.delete(curParent);
+        }
         curParent = nextParent;
       } catch {
         break;

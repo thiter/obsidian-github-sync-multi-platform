@@ -8,6 +8,7 @@
 未命中返回退出码 1，方便调用方回退到其它来源。
 """
 
+from __future__ import annotations
 import pathlib
 import re
 import sys
