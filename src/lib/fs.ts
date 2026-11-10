@@ -6,6 +6,7 @@ import { GitHubClient, GitHubTreeNode, GitTreeEntry } from "./github-api";
 import { unzip, Unzipped } from "fflate";
 import { $ } from "../lang/lang";
 import { showConfirmModal } from "./modal";
+import { showSyncErrorNotice } from "./errors";
 import {
   MAX_FILE_SIZE,
   UnifiedSyncFile,
@@ -103,8 +104,7 @@ const performSync = async (file: TFile, plugin: FastSync) => {
     dump(`Synced ${file.path} to GitHub`, newSha);
 
   } catch (error) {
-    console.error("Sync failed:", error);
-    new Notice(`Sync failed for ${file.path}: ${(error as Error).message}`);
+    showSyncErrorNotice(error, `Sync failed for ${file.path}:`);
   } finally {
     plugin.removeIgnoredFile(file.path);
   }
@@ -164,8 +164,7 @@ export const NoteDelete = async function (file: TAbstractFile, plugin: FastSync,
       await plugin.saveSyncData();
       dump(`Batch deleted folder ${file.path} via Git Data API`);
     } catch (error) {
-      console.error(`Folder batch delete failed:`, error);
-      new Notice(`Folder delete failed: ${(error as Error).message}`);
+      showSyncErrorNotice(error, "Folder batch delete failed:");
     } finally {
       for (const path of matchingPaths) {
         plugin.removeIgnoredFile(path);
@@ -281,8 +280,7 @@ export const NoteRename = async function (file: TAbstractFile, oldfile: string, 
       await plugin.saveSyncData();
       dump(`Batch renamed folder ${oldfile} -> ${file.path} via Git Data API`);
     } catch (err) {
-      console.error(`Folder batch rename failed:`, err);
-      new Notice(`Folder rename failed: ${(err as Error).message}`);
+      showSyncErrorNotice(err, "Folder batch rename failed:");
     } finally {
       for (const update of pendingUpdates) {
         plugin.removeIgnoredFile(update.oldPath);
@@ -338,8 +336,7 @@ export const NoteRename = async function (file: TAbstractFile, oldfile: string, 
     await plugin.saveSyncData();
     dump(`Renamed ${oldfile} -> ${file.path} via Git Data API`);
   } catch (error) {
-    console.error("Rename failed:", error);
-    new Notice(`Rename failed: ${(error as Error).message}`);
+    showSyncErrorNotice(error, "Rename failed:");
   } finally {
     plugin.removeIgnoredFile(file.path);
     plugin.removeIgnoredFile(oldfile);
@@ -431,8 +428,7 @@ export async function overrideRemoteAllFilesImpl(plugin: FastSync): Promise<void
     plugin.updateStats().catch((e) => console.error("Stats update failed:", e));
     new Notice("All assets synced to GitHub (1 atomic commit)");
   } catch (error) {
-    console.error("Force sync failed:", error);
-    new Notice(`Sync failed: ${(error as Error).message}`);
+    showSyncErrorNotice(error, "Force sync failed:");
   } finally {
     plugin.isSyncInProgress = false;
     plugin.enableWatch();
@@ -574,8 +570,7 @@ export async function forcePullRemoteAllFilesImpl(plugin: FastSync): Promise<voi
     plugin.updateStats().catch((e) => console.error("Stats update failed:", e));
     new Notice($("远端笔记已成功覆盖至本地！"));
   } catch (error) {
-    console.error("Force pull failed:", error);
-    new Notice(`❌ Force pull failed: ${(error as Error).message}`);
+    showSyncErrorNotice(error, "Force pull failed:");
   } finally {
     plugin.isSyncInProgress = false;
     plugin.enableWatch();
@@ -857,8 +852,7 @@ export async function syncAllFilesImpl(plugin: FastSync): Promise<void> {
     plugin.updateStats().catch(e => console.error("Stats update failed:", e));
     new Notice("Sync completed");
   } catch (error) {
-    console.error("Sync failed:", error);
-    new Notice(`❌ Sync failed: ${(error as Error).message}`);
+    showSyncErrorNotice(error, "Sync failed:");
   } finally {
     plugin.isSyncInProgress = false;
     plugin.enableWatch();

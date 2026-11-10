@@ -52,6 +52,24 @@
 
 ---
 
+### Q4. 同步報錯怎麼看？（狀態碼速查 / Status codes）
+
+右上角提示會**跟隨 Obsidian 介面語言自動切換中/英文**，並保留狀態碼數字方便查表；原始 JSON 只留在開發者控制台。完整實作說明見 `docs/internal/GITHUB_CONTENTS_API_SPEC.md` 第 7 節。
+
+| 狀態碼 | 中文提示 | English hint | 該怎麼辦 |
+|--------|----------|--------------|----------|
+| 401 | 同步失敗（401）：令牌無效或已過期 | Sync failed (401): token is invalid or expired | 到 GitHub 重新產生 PAT 並重貼；留意複製時別帶空格或換行 |
+| 422 | 同步衝突（422）：遠端剛被其他裝置更新 | Sync conflict (422): remote was just updated | 外掛已自動重試 3 次（200/400/800ms 退避）；仍失敗請稍後再同步一次 |
+| 403 | 請求被限流 / 權限不足（403） | Rate limited / Access denied (403) | 稍後再試，或檢查 fine-grained PAT 是否已授權該倉庫與 Contents 權限 |
+| 404 | 找不到倉庫或分支（404） | Repo or branch not found (404) | 檢查設定裡的 Owner / Repo / Branch |
+| 409 | 遠端倉庫為空 | Git Repository is empty | 正常情況，外掛會建立第一個 commit |
+
+**401 常見原因**：PAT 過期或被撤銷（GitHub 對滿 1 年未使用的 token 會自動撤銷）、複製貼上帶入空白字元、填成密碼或其他平台的令牌。令牌存在各裝置本地，**不會跨裝置同步**，每台都要單獨更新。
+
+> 改完 token 後第一次同步偶爾會遇到 422，那是啟動自動同步、手動同步、5 秒防抖推送與其他裝置同時寫入造成的短暫競爭，再同步一次通常就成功；本次更新後這類衝突多數會在內部自愈。
+
+---
+
 ## 简体中文
 
 ### Q1. 双向同步：当远程仓库有更新时，插件是否支持从 GitHub 拉取更改？还是只能单向推送？
@@ -101,6 +119,24 @@
 为了防止多设备协作时内容被意外覆写，建议用户：
 1. **保持实时同步开启**：编辑完成后，稍微等待几秒钟，确保当前设备的修改已自动推送至 GitHub。
 2. **切换设备时先同步**：在另一设备上开始编辑前，先打开 Obsidian 让其自动完成全量同步（或手动点击同步按钮），确保本地笔记是最新的，再开始撰写。
+
+---
+
+### Q4. 同步报错怎么看？（状态码速查 / Status codes）
+
+右上角提示会**跟随 Obsidian 界面语言自动切换中/英文**，并保留状态码数字方便查表；原始 JSON 只留在开发者控制台。完整实现说明见 `docs/internal/GITHUB_CONTENTS_API_SPEC.md` 第 7 节。
+
+| 状态码 | 中文提示 | English hint | 该怎么办 |
+|--------|----------|--------------|----------|
+| 401 | 同步失败（401）：令牌无效或已过期 | Sync failed (401): token is invalid or expired | 到 GitHub 重新生成 PAT 并重贴；留意复制时别带空格或换行 |
+| 422 | 同步冲突（422）：远端刚被其他设备更新 | Sync conflict (422): remote was just updated | 插件已自动重试 3 次（200/400/800ms 退避）；仍失败请稍后再同步一次 |
+| 403 | 请求被限流 / 权限不足（403） | Rate limited / Access denied (403) | 稍后再试，或检查 fine-grained PAT 是否已授权该仓库与 Contents 权限 |
+| 404 | 找不到仓库或分支（404） | Repo or branch not found (404) | 检查设置里的 Owner / Repo / Branch |
+| 409 | 远端仓库为空 | Git Repository is empty | 正常情况，插件会创建第一个 commit |
+
+**401 常见原因**：PAT 过期或被撤销（GitHub 对满 1 年未使用的 token 会自动撤销）、复制粘贴带入空白字符、填成密码或其他平台的令牌。令牌存在各设备本地，**不会跨设备同步**，每台都要单独更新。
+
+> 改完 token 后第一次同步偶尔会遇到 422，那是启动自动同步、手动同步、5 秒防抖推送与其他设备同时写入造成的短暂竞争，再同步一次通常就成功；本次更新后这类冲突多数会在内部自愈。
 
 ---
 
@@ -154,3 +190,21 @@ The plugin **does not perform Git-style 3-way merges** and **does not create `.c
 To avoid overwriting edits on multiple devices:
 1. **Enable Real-Time Sync**: Wait a few seconds after finishing edits to let the plugin auto-push changes.
 2. **Sync Before Editing**: When switching devices, open Obsidian and wait for the startup sync to complete (or click the sync button) to pull the latest edits before you start typing.
+
+---
+
+### Q4. How do I read a sync error? (Status codes / 状态码速查)
+
+The top-right Notice **follows your Obsidian UI language** (Chinese or English) and always keeps the numeric status code so you can look it up. The raw GitHub JSON stays in the developer console. Full implementation notes: `docs/internal/GITHUB_CONTENTS_API_SPEC.md`, section 7.
+
+| Status | 中文提示 | English hint | What to do |
+|--------|----------|--------------|------------|
+| 401 | 同步失败（401）：令牌无效或已过期 | Sync failed (401): token is invalid or expired | Regenerate the PAT on GitHub and paste it again; make sure no trailing space or newline was copied |
+| 422 | 同步冲突（422）：远端刚被其他设备更新 | Sync conflict (422): remote was just updated | The plugin already retried 3 times with 200/400/800 ms backoff; if it persists, sync again shortly |
+| 403 | 请求被限流 / 权限不足（403） | Rate limited / Access denied (403) | Try again later, or verify the fine-grained PAT has access to this repo with Contents permission |
+| 404 | 找不到仓库或分支（404） | Repo or branch not found (404) | Check Owner / Repo / Branch in settings |
+| 409 | 远端仓库为空 | Git Repository is empty | Expected for a brand-new repo; the plugin creates the first commit |
+
+**Common causes of 401**: an expired or revoked PAT (GitHub auto-revokes tokens unused for a year), whitespace pasted along with the token, or a password / token from another platform. Tokens are stored locally per device and **are not synced across devices** — update every device separately.
+
+> A 422 right after changing the token is usually a short race between the startup sync, a manual sync, the 5-second debounced push and another device writing at the same time. Syncing once more typically succeeds; after this update most of those conflicts are resolved automatically inside the plugin.

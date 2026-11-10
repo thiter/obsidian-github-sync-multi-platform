@@ -60,6 +60,85 @@ export interface GitRefResponse {
   };
 }
 
+/**
+ * Attach the HTTP status to an API error so the UI layer (errors.ts) can
+ * classify 401 / 403 / 404 / 422 deterministically instead of parsing JSON.
+ */
+export function apiFailure(message: string, status: number): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
+/**
+ * A PATCH /git/refs/heads/{branch} that GitHub rejects with
+ * 422 "Update is not a fast forward" means the branch was advanced by another
+ * device between our `getRef()` and `updateRef()`. Only this specific error
+ * is safe to retry; 401/403/404 and other 422s are configuration problems.
+ */
+export function isNonFastForwardError(error: unknown): boolean {
+  const e = error as { status?: number; message?: string } | null;
+  const text = typeof e?.message === "string" ? e.message : String(error ?? "");
+  const status = typeof e?.status === "number" ? e.status : null;
+  const is422 = status === 422 || /\b422\b/.test(text);
+  return is422 && /not a fast forward/i.test(text);
+}
+
+/** Max retries (not attempts) after a fast-forward conflict. */
+export const MAX_COMMIT_REF_RETRIES = 3;
+/** Base delay for exponential backoff: 200 / 400 / 800 ms + jitter. */
+export const COMMIT_RETRY_BASE_DELAY_MS = 200;
+
+export interface CommitBatchRetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  /** Injectable for tests so retry tests never actually wait. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Serialize every operation that moves the branch ref.
+ *
+ * This plugin writes through two different APIs that both create commits:
+ *   - Contents API (`putFile` / `deleteFile`): commits implicitly, e.g. the
+ *     debounced file watcher, single-file deletion and the fire-and-forget
+ *     `updateStats()` upload.
+ *   - Git Data API (`commitBatch`): builds a tree/commit then PATCHes the ref,
+ *     used by 3-way sync, folder rename and folder deletion.
+ *
+ * If they overlap, commitBatch reads HEAD=A while a putFile advances it to B,
+ * and the PATCH is rejected with 422 "Update is not a fast forward". One FIFO
+ * queue per client makes those writes mutually exclusive. A failed predecessor
+ * must not poison the queue, so the task is used as both fulfillment and
+ * rejection handler. Internal helpers (_doPutRequest, getRef, createTree,
+ * createCommit, updateRef, createBlob) deliberately stay outside the queue to
+ * avoid self-deadlock; createBlob does not move the ref.
+ */
+export class WriteQueue {
+  private tail: Promise<void> = Promise.resolve();
+  private pending = 0;
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    this.pending += 1;
+    const result = this.tail.then(task, task);
+    this.tail = result.then(
+      () => {
+        this.pending -= 1;
+      },
+      () => {
+        this.pending -= 1;
+      }
+    );
+    return result;
+  }
+
+  /** Queued + running tasks, exposed for tests and diagnostics. */
+  get size(): number {
+    return this.pending;
+  }
+}
+
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const len = bytes.byteLength;
@@ -74,9 +153,14 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export class GitHubClient {
   private config: GitHubConfig;
+  private readonly writeQueue = new WriteQueue();
 
   constructor(config: GitHubConfig) {
-    this.config = config;
+    // Tokens never contain whitespace, but copy/paste (especially on iOS via
+    // WeChat / Notes) frequently adds a trailing space or newline. Leave it
+    // in place and GitHub answers `401 Bad credentials`. Cleaning it here
+    // covers settings UI, clipboard import and legacy data.json alike.
+    this.config = { ...config, token: (config.token ?? "").trim() };
   }
 
   private get baseUrl() {
@@ -107,12 +191,21 @@ export class GitHubClient {
       }
       return null;
     } catch (error) {
-      if (error.status === 404) return null;
+      if ((error as { status?: number }).status === 404) return null;
       throw error;
     }
   }
 
+  /** All ref-moving writes go through WriteQueue; see its docs. */
   async putFile(path: string, content: string | ArrayBuffer, sha?: string): Promise<string> {
+    return this.writeQueue.run(() => this.putFileImpl(path, content, sha));
+  }
+
+  private async putFileImpl(
+    path: string,
+    content: string | ArrayBuffer,
+    sha?: string
+  ): Promise<string> {
     const response = await this._doPutRequest(path, content, sha);
 
     // 409 = 本地缓存 sha 已过期（SHA 冲突）
@@ -123,19 +216,22 @@ export class GitHubClient {
       const freshSha = remoteFile?.sha;
       if (!freshSha && response.status === 422) {
         // 422 且远端也没有这个文件 → 真正的验证失败，不重试
-        throw new Error(`Failed to put file (422 validation error): ${response.text}`);
+        throw apiFailure(`Failed to put file (422 validation error): ${response.text}`, 422);
       }
       const retry = await this._doPutRequest(path, content, freshSha);
       if (retry.status === 200 || retry.status === 201) {
         return (retry.json as { content: { sha: string } }).content.sha;
       }
-      throw new Error(`Failed to put file after sha retry (${response.status}→${retry.status}): ${retry.text}`);
+      throw apiFailure(
+        `Failed to put file after sha retry (${response.status}→${retry.status}): ${retry.text}`,
+        retry.status
+      );
     }
 
     if (response.status === 200 || response.status === 201) {
       return (response.json as { content: { sha: string } }).content.sha;
     }
-    throw new Error(`Failed to put file: ${response.status} ${response.text}`);
+    throw apiFailure(`Failed to put file: ${response.status} ${response.text}`, response.status);
   }
 
   private async _doPutRequest(
@@ -184,6 +280,10 @@ export class GitHubClient {
   }
 
   async deleteFile(path: string, sha: string): Promise<void> {
+    return this.writeQueue.run(() => this.deleteFileImpl(path, sha));
+  }
+
+  private async deleteFileImpl(path: string, sha: string): Promise<void> {
     const encodedPath = path.split('/').map(encodeURIComponent).join('/');
     const url = `${this.baseUrl}/contents/${encodedPath}`;
     const body = {
@@ -201,7 +301,7 @@ export class GitHubClient {
 
     // B5: GitHub DELETE 成功返回 200（有响应体）或 204（无内容）
     if (response.status !== 200 && response.status !== 204) {
-      throw new Error(`Failed to delete file: ${response.status} ${response.text}`);
+      throw apiFailure(`Failed to delete file: ${response.status} ${response.text}`, response.status);
     }
   }
 
@@ -241,7 +341,7 @@ export class GitHubClient {
       return { sha: "", url: "", tree: [], truncated: false };
     }
 
-    throw new Error(`Failed to get tree: HTTP ${response.status} - ${response.text}`);
+    throw apiFailure(`Failed to get tree: HTTP ${response.status} - ${response.text}`, response.status);
   }
 
   private isEmptyRepositoryResponse(status: number, text: string): boolean {
@@ -268,7 +368,7 @@ export class GitHubClient {
       throw new Error("EMPTY_REPO");
     }
 
-    throw new Error(`Failed to download zipball: HTTP ${response.status} - ${response.text}`);
+    throw apiFailure(`Failed to download zipball: HTTP ${response.status} - ${response.text}`, response.status);
   }
 
   async createBlob(content: string | ArrayBuffer): Promise<string> {
@@ -295,15 +395,26 @@ export class GitHubClient {
     if (res.status === 201) {
       return (res.json as { sha: string }).sha;
     }
-    throw new Error(`Failed to create blob: ${res.status} - ${res.text}`);
+    throw apiFailure(`Failed to create blob: ${res.status} - ${res.text}`, res.status);
   }
 
+  private refReadSeq = 0;
+
   async getRef(branch: string = this.config.branch): Promise<GitRefResponse | null> {
-    const url = `${this.baseUrl}/git/ref/heads/${encodeURIComponent(branch)}`;
+    // GitHub answers this endpoint with `Cache-Control: private, max-age=60,
+    // s-maxage=60`. Reading a cached HEAD makes commitBatch build its commit
+    // on a stale parent, so PATCH is rejected as non-fast-forward and every
+    // retry (all within ~1.5s) hits the same stale value. A unique URL plus
+    // no-cache headers forces a fresh read on every attempt.
+    const url = `${this.baseUrl}/git/ref/heads/${encodeURIComponent(branch)}?ts=${Date.now()}-${++this.refReadSeq}`;
     const res = await requestUrl({
       url,
       method: "GET",
-      headers: this.headers,
+      headers: {
+        ...this.headers,
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
       throw: false,
     });
 
@@ -313,7 +424,7 @@ export class GitHubClient {
     if (res.status === 404 || this.isEmptyRepositoryResponse(res.status, res.text)) {
       return null;
     }
-    throw new Error(`Failed to get ref: ${res.status} - ${res.text}`);
+    throw apiFailure(`Failed to get ref: ${res.status} - ${res.text}`, res.status);
   }
 
   async getCommit(commitSha: string): Promise<GitCommitResponse> {
@@ -328,7 +439,7 @@ export class GitHubClient {
     if (res.status === 200) {
       return res.json as GitCommitResponse;
     }
-    throw new Error(`Failed to get commit ${commitSha}: ${res.status} - ${res.text}`);
+    throw apiFailure(`Failed to get commit ${commitSha}: ${res.status} - ${res.text}`, res.status);
   }
 
   async createTree(baseTreeSha: string | null, tree: GitTreeEntry[]): Promise<string> {
@@ -349,7 +460,7 @@ export class GitHubClient {
     if (res.status === 201) {
       return (res.json as { sha: string }).sha;
     }
-    throw new Error(`Failed to create tree: ${res.status} - ${res.text}`);
+    throw apiFailure(`Failed to create tree: ${res.status} - ${res.text}`, res.status);
   }
 
   async createCommit(message: string, treeSha: string, parents: string[]): Promise<string> {
@@ -369,9 +480,15 @@ export class GitHubClient {
     if (res.status === 201) {
       return (res.json as { sha: string }).sha;
     }
-    throw new Error(`Failed to create commit: ${res.status} - ${res.text}`);
+    throw apiFailure(`Failed to create commit: ${res.status} - ${res.text}`, res.status);
   }
 
+  /**
+   * Move the branch ref to `commitSha`.
+   *
+   * `force` exists for API compatibility but MUST stay false: forcing the ref
+   * would silently discard commits pushed by other devices (data loss).
+   */
   async updateRef(commitSha: string, branch: string = this.config.branch, force: boolean = false): Promise<void> {
     const url = `${this.baseUrl}/git/refs/heads/${encodeURIComponent(branch)}`;
     const res = await requestUrl({
@@ -389,7 +506,11 @@ export class GitHubClient {
       return;
     }
 
-    if (res.status === 404 || res.status === 422) {
+    // 404 = ref does not exist yet (brand-new repository, first commit).
+    // Only this case should create the branch. A 422 fast-forward conflict
+    // must NOT go here: the branch already exists, so POST /git/refs would
+    // fail for sure, wasting a request and widening the race window.
+    if (res.status === 404) {
       const createRes = await requestUrl({
         url: `${this.baseUrl}/git/refs`,
         method: "POST",
@@ -403,55 +524,88 @@ export class GitHubClient {
       if (createRes.status === 201) {
         return;
       }
+      throw apiFailure(
+        `Failed to create ref: ${createRes.status} - ${createRes.text}`,
+        createRes.status
+      );
     }
 
-    throw new Error(`Failed to update ref: ${res.status} - ${res.text}`);
+    // 422 "Update is not a fast forward" is handed back to commitBatch,
+    // which re-reads HEAD and rebuilds the commit on top of it.
+    throw apiFailure(`Failed to update ref: ${res.status} - ${res.text}`, res.status);
   }
 
+  /**
+   * Atomically create a tree + commit and move the branch ref.
+   *
+   * If another device advances the branch between getRef() and updateRef(),
+   * GitHub rejects the ref update with 422. We re-read HEAD and rebuild the
+   * whole chain on the new parent, up to MAX_COMMIT_REF_RETRIES times with
+   * exponential backoff + jitter so two devices do not retry in lockstep.
+   * Only fast-forward conflicts are retried; auth / permission / 404 issues
+   * are thrown immediately with their original message.
+   */
   async commitBatch(
     message: string,
     treeEntries: GitTreeEntry[],
-    explicitBaseTreeSha?: string | null
+    explicitBaseTreeSha?: string | null,
+    retryOptions: CommitBatchRetryOptions = {}
+  ): Promise<{ commitSha: string; treeSha: string }> {
+    return this.writeQueue.run(() =>
+      this.commitBatchImpl(message, treeEntries, explicitBaseTreeSha, retryOptions)
+    );
+  }
+
+  private async commitBatchImpl(
+    message: string,
+    treeEntries: GitTreeEntry[],
+    explicitBaseTreeSha?: string | null,
+    retryOptions: CommitBatchRetryOptions = {}
   ): Promise<{ commitSha: string; treeSha: string }> {
     if (treeEntries.length === 0) {
       throw new Error("Cannot commit an empty tree entry list");
     }
 
-    const currentRef = await this.getRef();
-    let baseCommitSha: string | null = currentRef?.object?.sha ?? null;
-    let baseTreeSha: string | null = explicitBaseTreeSha !== undefined ? explicitBaseTreeSha : null;
-    let parents: string[] = [];
+    const maxRetries = Math.max(0, retryOptions.maxRetries ?? MAX_COMMIT_REF_RETRIES);
+    const baseDelayMs = retryOptions.baseDelayMs ?? COMMIT_RETRY_BASE_DELAY_MS;
+    const sleep = retryOptions.sleep ?? defaultSleep;
 
-    if (baseCommitSha) {
-      parents = [baseCommitSha];
-      if (explicitBaseTreeSha === undefined) {
+    for (let attempt = 0; ; attempt++) {
+      // Re-read HEAD on every attempt: parents must always be the CURRENT head,
+      // otherwise GitHub will reject the ref update again.
+      const currentRef = await this.getRef();
+      const baseCommitSha: string | null = currentRef?.object?.sha ?? null;
+      let baseTreeSha: string | null = explicitBaseTreeSha !== undefined ? explicitBaseTreeSha : null;
+      const parents: string[] = baseCommitSha ? [baseCommitSha] : [];
+
+      // Preserve the upsert semantics: when the caller supplies an explicit
+      // base tree, never replace it with the parent commit's tree.
+      if (baseCommitSha && explicitBaseTreeSha === undefined) {
         const parentCommit = await this.getCommit(baseCommitSha);
         baseTreeSha = parentCommit.tree.sha;
       }
-    }
 
-    const newTreeSha = await this.createTree(baseTreeSha, treeEntries);
-    const newCommitSha = await this.createCommit(message, newTreeSha, parents);
+      const newTreeSha = await this.createTree(baseTreeSha, treeEntries);
+      const newCommitSha = await this.createCommit(message, newTreeSha, parents);
 
-    try {
-      await this.updateRef(newCommitSha);
-    } catch (refErr) {
-      const retryRef = await this.getRef();
-      const retryCommitSha = retryRef?.object?.sha;
-      if (retryCommitSha && retryCommitSha !== baseCommitSha) {
-        const retryCommit = await this.getCommit(retryCommitSha);
-        const retryTreeSha = await this.createTree(
-          explicitBaseTreeSha !== undefined ? explicitBaseTreeSha : retryCommit.tree.sha,
-          treeEntries
-        );
-        const retryNewCommit = await this.createCommit(message, retryTreeSha, [retryCommitSha]);
-        await this.updateRef(retryNewCommit);
-        return { commitSha: retryNewCommit, treeSha: retryTreeSha };
+      try {
+        await this.updateRef(newCommitSha);
+        return { commitSha: newCommitSha, treeSha: newTreeSha };
+      } catch (refErr) {
+        if (!isNonFastForwardError(refErr)) {
+          throw refErr;
+        }
+        if (attempt >= maxRetries) {
+          throw apiFailure(
+            `Failed to commit batch after ${maxRetries} retries: Update is not a fast forward (remote branch kept changing)`,
+            422
+          );
+        }
+        // 200 / 400 / 800 ms + up to 99 ms of jitter.
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
+        await sleep(delay);
       }
-      throw refErr;
     }
-
-    return { commitSha: newCommitSha, treeSha: newTreeSha };
   }
 
   // Helper to decode base64 content from GitHub

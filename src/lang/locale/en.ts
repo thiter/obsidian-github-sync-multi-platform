@@ -68,6 +68,14 @@ const en: Partial<LangMap> = {
   "确认删除远端文件夹": "Confirm Delete Remote Folder",
   "确认同步删除远端": "Confirm Sync Delete to Remote",
   "已取消同步删除远端文件夹": "Remote folder deletion cancelled",
+
+  // Sync error hints (English). These keys are the fallback for every locale
+  // that does not define its own translation.
+  "syncError401": "Sync failed (401): token is invalid or expired.\nRegenerate the PAT in Settings → GitHub token.",
+  "syncError422": "Sync conflict (422): remote changed during this sync.\nRetried 3 times, still failed. Local edits are safe; sync again shortly.",
+  "syncError429": "Rate limited (403/429): please try again later.",
+  "syncError403": "Access denied (403): check the PAT scopes and repository access.",
+  "syncError404": "Repo or branch not found (404): check Owner / Repo / Branch.",
 }
 
 export default en;

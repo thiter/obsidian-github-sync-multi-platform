@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-11-10
+
+### 🛠️ 同步稳定性：消除 401 / 422 报错
+- **令牌清洗**：`GitHubClient` 构造器与设置页统一 `trim()`，消除复制粘贴带入首尾空格/换行导致的假 `401 Bad credentials`（剪贴板导入、旧 `data.json` 同样覆盖）。
+- **远端写入串行化**：新增 `WriteQueue`，`putFile` / `deleteFile` / `commitBatch` 统一 FIFO 串行，一处覆盖全部写入点。此前 Contents API（单文件 watcher、`updateStats()` 后台上传、单文件删除）与 Git Data API（原子批量提交）并发推进同一分支，在 `getRef()` 与 `PATCH ref` 之间被改写 HEAD 即触发 `422 Update is not a fast forward`；内部 helper 留在队列外避免自死锁，前一个任务失败不阻塞队列。
+- **始终读取最新 HEAD**：`GET /git/ref/heads/*` 响应带 60 秒缓存，全量同步后的 `updateStats()` 会推进 HEAD，下一次同步若命中缓存便以旧 HEAD 作 parent，三次重试全落在同一缓存窗口。`getRef()` 现每次带唯一 `?ts=` 并发送 `Cache-Control` / `Pragma: no-cache`，保证每轮重试都基于当轮最新 HEAD。
+- **精确区分 ref 错误**：`updateRef()` 只在 **404**（空仓库首次提交）时 `POST /git/refs` 创建分支；422 不再触发注定失败的创建请求，创建失败单独抛出可读错误。
+- **并发冲突自动收敛**：`commitBatch()` 对 `422 Update is not a fast forward` 最多重试 3 次，200/400/800 ms 退避 + 抖动，每轮重新 `getRef()` 重建 tree/commit；401 / 403 / 404 / 其它 422 立即抛出，不误重试。
+- **红线保持**：绝不 `force: true`；保留 `explicitBaseTreeSha` 的覆盖远端 upsert 语义；不引入合并或冲突副本。跨设备竞争仍由 3 次退避重试兜底。
+
+### ✨ 可读错误提示与文档
+- **多语言友好提示**：新增 `src/lib/errors.ts`，把 GitHub 原始 JSON 映射为两行以内、可操作的中/英提示（401 令牌失效 / 422 冲突 / 403 限流 / 403 权限 / 404 找不到仓库或分支），跟随界面语言自动切换；需用户操作的提示延长至 9 秒，冲突提示 7 秒，原始错误只留在 `console.error`。
+- **统一错误出口**：`src/lib/fs.ts` 的 7 处同步失败出口（单文件同步、文件夹删/改、单文件改名、覆盖远端、覆盖本地、全量同步）不再弹出原始报错文本，统一走可读提示。
+- **文案与文档**：`en` / `zh-cn` / `zh-tw` 各新增 5 条提示文案（422 明确写出「已自动重试 3 次仍未成功，改动未丢失」）；`docs/FAQ.md` 三语新增 Q4「同步报错怎么看」状态码速查表，含令牌不跨设备同步的说明。内部状态码规范同步修订（按项目约定保留在本地，不随仓库分发）。
+
+### 🧪 验证
+- `npm run typecheck` 0 错误；`npm test` **28/28** 通过；`npm run build` 成功。
+- 回归用例覆盖 422 自愈与退避上限、404 建分支、401/403 不重试、令牌清洗、写入队列串行性、cache-buster 与 upsert 语义、三语文案。测试套件按项目约定保留在本地，不随仓库分发。
+
+### 📌 关于 404 的排查提示
+- 实测确认：GitHub 对「仓库名有误」或「令牌无权访问该私有仓库」统一返回 **404**（而非 401），且令牌不跨设备同步。遇到「找不到仓库或分支（404）」时，请逐台核对 Owner / Repo / Branch 与该设备自己的 PAT 授权范围。
+- 本版本只改善 404 的可读提示；`isEmptyRepositoryResponse()` 仍会把 404 视作空仓库，该判定下的错误可能延迟到上传阶段才显示，本次未改动。
+
+---
+
 ## [1.0.9] - 2026-10-30
 
 ### 🛡️ 重大防灾与安全加固 (Critical Safety & Disaster Prevention)

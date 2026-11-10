@@ -196,7 +196,8 @@ export class SettingTab extends PluginSettingTab {
           .setPlaceholder($("输入您的 GitHub 访问令牌"))
           .setValue(this.plugin.settings.githubToken)
           .onChange(async (value) => {
-            this.plugin.settings.githubToken = value
+            // 复制粘贴常带入首尾空格/换行，GitHub 会直接返回 401 Bad credentials
+            this.plugin.settings.githubToken = value.trim()
             await this.plugin.saveSettings()
           })
       })
